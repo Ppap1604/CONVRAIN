@@ -1,0 +1,24 @@
+# conda env create -f environment.yml && conda activate convrain
+name: convrain
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - scikit-image
+  - opencv
+  - pandas
+  - pyarrow
+  - pyyaml
+  - scikit-learn
+  - lightgbm
+  - joblib
+  - jsonschema
+  - xarray
+  - netcdf4
+  - satpy
+  - matplotlib
+  - imageio
+  - jupyterlab
+  - pytest

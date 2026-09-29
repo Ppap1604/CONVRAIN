@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <style>
+    html, body, #map { width: 100%; height: 100%; margin: 0; background: #5f738a; }
+    /* RDT EUMETSAT palette filter on Esri Ocean */
+    .rdt-tiles {
+      filter: contrast(110%) brightness(92%) saturate(80%) sepia(20%);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="/static/vendor/leaflet.js"></script>
+  <script>
+    const map = L.map('map', { center: [13.8, 100.8], zoom: 8, zoomControl: false });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+      className: 'rdt-tiles'
+    }).addTo(map);
+  </script>
+</body>
+</html>

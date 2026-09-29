@@ -1,0 +1,554 @@
+/**
+ * CONVRAIN - Satellite Convective Rain Onset Nowcast Web Platform
+ * Dual Mode: Modern Dark SpaceX / Tactical Meteorological + EUMETSAT RDT-CW Light Mode
+ */
+
+:root {
+  /* Default: Dark Theme */
+  --bg-main: #0b0f19;
+  --panel-bg: rgba(13, 17, 23, 0.92);
+  --panel-header: #161b22;
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --text-main: #f0f6fc;
+  --text-muted: #8b949e;
+  --tab-bg: #161b22;
+  --tab-border: rgba(255, 255, 255, 0.15);
+  --btn-bg: rgba(22, 27, 34, 0.92);
+  --btn-border: rgba(255, 255, 255, 0.15);
+  --btn-hover: #21262d;
+  --input-bg: #0d1117;
+  --input-border: rgba(255, 255, 255, 0.2);
+  --graticule-line: rgba(255, 255, 255, 0.13);
+  --graticule-text: #8b949e;
+  --graticule-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  --accent-cyan: #22d3ee;
+  --accent-yellow: #facc15;
+  --accent-magenta: #e879f9;
+  --accent-red: #ef4444;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: 'Consolas', 'Courier New', monospace;
+}
+
+body.light-theme {
+  --bg-main: #5f738a;
+  --panel-bg: rgba(35, 48, 56, 0.95);
+  --panel-header: #354752;
+  --panel-border: #1e2c33;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --tab-bg: #3b5059;
+  --tab-border: #23343b;
+  --btn-bg: rgba(45, 60, 69, 0.92);
+  --btn-border: #23343b;
+  --btn-hover: #4a5e68;
+  --input-bg: #1e2930;
+  --input-border: #3b5059;
+  --graticule-line: rgba(0, 0, 0, 0.22);
+  --graticule-text: #475569;
+  --graticule-shadow: 1px 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  background-color: var(--bg-main);
+  color: var(--text-main);
+  transition: background-color 0.25s ease;
+}
+
+/* =====================================================================
+   Map Container & Basemap Filters
+===================================================================== */
+#map {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-main);
+  z-index: 1;
+}
+
+/* Dark Mode Basemap Filter (High contrast, crisp borders) */
+.dark-tiles {
+  filter: contrast(118%) brightness(95%);
+}
+
+/* RDT Classic Ocean Basemap Filter */
+.rdt-ocean-tiles {
+  filter: contrast(112%) brightness(88%) saturate(75%) sepia(14%);
+}
+
+/* Graticule Grid Labels */
+.graticule-label {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--graticule-text);
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: var(--graticule-shadow);
+}
+
+/* =====================================================================
+   Top Left Product Tab (RDT EUMETSAT / SpaceX Hybrid)
+===================================================================== */
+.rdt-product-tab {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: var(--tab-bg);
+  border: 1px solid var(--tab-border);
+  color: var(--text-main);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 3px;
+  backdrop-filter: blur(8px);
+}
+
+.rdt-tab-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rdt-badge-live {
+  background: #22c55e;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 2px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.rdt-tab-close {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: bold;
+}
+.rdt-tab-close:hover { color: #ffffff; }
+
+/* Menu Toggle Button */
+.rdt-menu-btn {
+  position: absolute;
+  top: 44px;
+  left: 10px;
+  z-index: 1000;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+}
+
+.rdt-menu-btn:hover {
+  background: var(--btn-hover);
+  border-color: var(--accent-yellow);
+}
+
+/* =====================================================================
+   Top Right Layer HUD Toolbar
+===================================================================== */
+.rdt-layer-toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: calc(100vw - 320px);
+}
+
+.rdt-btn-layer {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-main);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 11px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  transition: all 0.15s;
+  backdrop-filter: blur(8px);
+}
+
+.rdt-btn-layer:hover {
+  background: var(--btn-hover);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.rdt-btn-layer.active {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: var(--accent-yellow);
+  color: var(--accent-yellow);
+}
+
+.rdt-btn-layer.theme-btn {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+.rdt-btn-layer.theme-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+}
+
+/* =====================================================================
+   Collapsible Left Panel (GPS & Point Nowcast Inspector)
+===================================================================== */
+.rdt-inspector-drawer {
+  position: absolute;
+  top: 80px;
+  left: 10px;
+  width: 380px;
+  max-width: calc(100vw - 25px);
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(12px);
+}
+
+.rdt-drawer-header {
+  background: var(--panel-header);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.rdt-drawer-body {
+  padding: 12px;
+}
+
+.btn-gps-rdt {
+  width: 100%;
+  background: #facc15;
+  color: #0f172a;
+  border: 1px solid #ca8a04;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  transition: all 0.15s;
+  box-shadow: 0 2px 6px rgba(250, 204, 21, 0.25);
+}
+
+.btn-gps-rdt:hover {
+  background: #fde047;
+  transform: translateY(-1px);
+}
+
+.rdt-input-group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.rdt-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 2px;
+  transition: border-color 0.15s;
+}
+
+.rdt-input:focus {
+  outline: none;
+  border-color: var(--accent-yellow);
+}
+
+.btn-rdt-submit {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.btn-rdt-submit:hover {
+  background: var(--btn-hover);
+  border-color: var(--accent-yellow);
+}
+
+.preset-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.preset-item {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #cbd5e1;
+  padding: 2px 8px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.preset-item:hover {
+  background: var(--accent-yellow);
+  color: #0f172a;
+  border-color: var(--accent-yellow);
+}
+
+/* =====================================================================
+   Point Result Alert Box
+===================================================================== */
+.rdt-alert-box {
+  margin-top: 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 10px;
+  animation: fadeIn 0.2s ease;
+}
+
+.alert-title-row {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.alert-title-row.danger { color: #f87171; }
+.alert-title-row.warning { color: #facc15; }
+.alert-title-row.safe { color: #4ade80; }
+.alert-title-row.notice { color: #38bdf8; }
+
+.alert-desc-text {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.rdt-stats-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 7px 9px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.rdt-stat-lbl {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.rdt-stat-val {
+  color: var(--text-main);
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* =====================================================================
+   Meteorological Legend Panel (Bottom Right)
+===================================================================== */
+.rdt-legend-panel {
+  position: absolute;
+  bottom: 60px;
+  right: 10px;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  padding: 9px 13px;
+  border-radius: 3px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  color: var(--text-main);
+  backdrop-filter: blur(10px);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+/* =====================================================================
+   Bottom Timeline Playback Bar
+===================================================================== */
+.rdt-bottom-bar {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 1000;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.rdt-ctrl-btn {
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--text-main);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  border-radius: 2px;
+  transition: all 0.15s;
+}
+
+.rdt-ctrl-btn:hover {
+  background: var(--btn-hover);
+  border-color: var(--accent-yellow);
+}
+
+.rdt-slider-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rdt-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.rdt-slider {
+  width: 100%;
+  accent-color: var(--accent-yellow);
+  height: 4px;
+  cursor: pointer;
+}
+
+/* =====================================================================
+   RDT Vector Arrow & Marker Styling
+===================================================================== */
+.black-arrow-icon {
+  overflow: visible !important;
+}
+
+/* User Target Crosshair Pin */
+.user-rdt-marker {
+  width: 22px;
+  height: 22px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-cross-line {
+  position: absolute;
+  background: #dc2626;
+}
+
+.user-cross-h { width: 18px; height: 2px; }
+.user-cross-v { width: 2px; height: 18px; }
+.user-center-dot {
+  width: 6px;
+  height: 6px;
+  background: #dc2626;
+  border-radius: 50%;
+  z-index: 2;
+  box-shadow: 0 0 8px rgba(220, 38, 38, 0.9);
+}
+
+/* Leaflet Tooltip & Popups */
+.leaflet-tooltip.rdt-tooltip {
+  background: var(--panel-bg) !important;
+  border: 1px solid var(--panel-border) !important;
+  color: var(--text-main) !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  padding: 4px 8px !important;
+  border-radius: 2px !important;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--panel-bg) !important;
+  border: 1px solid var(--panel-border) !important;
+  border-radius: 3px !important;
+  color: var(--text-main) !important;
+  font-size: 11px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+.leaflet-popup-tip { background: var(--panel-bg) !important; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

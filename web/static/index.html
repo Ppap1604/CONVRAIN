@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CONVRAIN - Convective Cloud Nowcast Platform</title>
+
+  <!-- Local Leaflet Vendor Assets -->
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  
+  <!-- Modern Dark & RDT Meteorological Style CSS -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+
+  <!-- Top Left Product Tab (EUMETSAT / SpaceX Hybrid) -->
+  <div class="rdt-product-tab">
+    <div class="rdt-tab-title">
+      <span class="rdt-badge-live">LIVE</span>
+      <span id="rdt-product-title">RDT CONVRAIN [2026/05/20 07:20], Ech000H pour 07:20UTC</span>
+    </div>
+    <span class="rdt-tab-close" onclick="this.parentElement.style.display='none'">✕</span>
+  </div>
+
+  <!-- Menu Toggle Button (Opens Inspector Drawer) -->
+  <button id="btn-rdt-menu" class="rdt-menu-btn">∨ เมนู / Menu</button>
+
+  <!-- Top Right Layer Toolbar HUD -->
+  <div class="rdt-layer-toolbar">
+    <button id="toggle-theme" class="rdt-btn-layer theme-btn" title="สลับโหมดมืด (Dark Mode) และโหมดสว่าง RDT Classic">
+      <span id="icon-theme">🌙</span>
+      <span id="lbl-theme">Dark Mode</span>
+    </button>
+
+    <button id="toggle-sat-clouds" class="rdt-btn-layer active" title="เปิด/ปิด เงาเมฆดาวเทียมทั้งหมด (Satellite Cloud Deck)">
+      <span>☁️</span>
+      <span>เงาเมฆดาวเทียม (Sat Clouds)</span>
+    </button>
+
+    <button id="toggle-trajectories" class="rdt-btn-layer active" title="เปิด/ปิด เวกเตอร์ลูกศรทิศทางการเคลื่อนที่">
+      <span>➔</span>
+      <span>ลูกศรทิศทาง (Motion)</span>
+    </button>
+
+    <button id="toggle-impact-zones" class="rdt-btn-layer active" title="เปิด/ปิด พื้นที่และจุดคาดการณ์ฝนตก">
+      <span>🎯</span>
+      <span>จุดคาดการณ์ตก (Impacts)</span>
+    </button>
+
+    <button id="toggle-footprints" class="rdt-btn-layer active" title="เปิด/ปิด กรอบขอบเขตกลุ่มเมฆ RDT">
+      <span>🛡️</span>
+      <span>กรอบขอบเขตเมฆ (Frames)</span>
+    </button>
+
+    <button id="toggle-graticule" class="rdt-btn-layer active" title="เปิด/ปิด เส้นพิกัดภูมิศาสตร์ Lat/Lon">
+      <span>🌐</span>
+      <span>เส้นพิกัด (Graticule)</span>
+    </button>
+
+    <button id="toggle-basemap" class="rdt-btn-layer" title="สลับแผนที่พื้นหลัง">
+      <span>🗺️</span>
+      <span id="lbl-basemap">Dark Canvas</span>
+    </button>
+  </div>
+
+  <!-- Collapsible Left Drawer: GPS & Point Nowcast Inspector -->
+  <div id="rdt-drawer" class="rdt-inspector-drawer">
+    <div class="rdt-drawer-header">
+      <span>📍 วิเคราะห์ฝน ณ พิกัดเป้าหมาย (Point Nowcast)</span>
+      <span id="gps-status-lbl" style="font-size: 10px; color: var(--text-muted); font-weight: normal;">คลิกบนแผนที่ได้</span>
+    </div>
+
+    <div class="rdt-drawer-body">
+      <button id="btn-gps" class="btn-gps-rdt">
+        <span>📍</span>
+        <span>ดึงตำแหน่ง GPS ของเครื่อง</span>
+      </button>
+
+      <div class="rdt-input-group">
+        <input type="number" id="input-lat" class="rdt-input" placeholder="Latitude (13.7563)" step="0.0001" value="13.5407">
+        <input type="number" id="input-lon" class="rdt-input" placeholder="Longitude (100.5018)" step="0.0001" value="100.4041">
+        <button id="btn-check-coords" class="btn-rdt-submit">ตรวจสอบ</button>
+      </div>
+
+      <div class="preset-chip-list">
+        <span style="color: #94a3b8; align-self: center;">พิกัดแนะนำ:</span>
+        <span class="preset-item" data-lat="13.7563" data-lon="100.5018">กรุงเทพฯ</span>
+        <span class="preset-item" data-lat="13.5407" data-lon="100.4041">สมุทรปราการ</span>
+        <span class="preset-item" data-lat="13.3611" data-lon="100.9847">ชลบุรี</span>
+        <span class="preset-item" data-lat="14.2069" data-lon="101.2131">นครนายก</span>
+        <span class="preset-item" data-lat="14.0510" data-lon="101.3734">ปราจีนบุรี</span>
+      </div>
+
+      <!-- Point Alert Output Card -->
+      <div id="rain-result-card" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Meteorological Legend (Bottom Right) -->
+  <div class="rdt-legend-panel">
+    <div style="font-weight: 700; margin-bottom: 6px; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 3px;">
+      RDT-CW CONVECTIVE PHASES
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="border: 1px solid rgba(255,255,255,0.4); background: linear-gradient(90deg, rgba(200,215,235,0.6), rgba(150,170,195,0.1));"></div>
+      <span>เงาเมฆดาวเทียม (Satellite Cloud Deck)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="border: 2px solid #ef4444; background: #22d3ee;"></div>
+      <span>ฝนตกแล้ว (Mature / Active Rain)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="border: 2px solid #e879f9; background: #fde047;"></div>
+      <span>กำลังพัฒนาตัว (Developing / Triggering)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="border: 1.5px dashed #3b82f6; background: #93c5fd;"></div>
+      <span>กำลังสลายตัว (Decaying)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-swatch" style="border: 1.5px dashed #ef4444; background: #fca5a5;"></div>
+      <span>พื้นที่คาดการณ์ตก (Projected Landfall)</span>
+    </div>
+    <div class="legend-item">
+      <span id="legend-arrow-icon" style="font-weight: bold; color: #facc15; font-size: 14px; line-height: 10px;">➔</span>
+      <span>ทิศทางการเคลื่อนที่ (Motion Vector)</span>
+    </div>
+  </div>
+
+  <!-- Map Canvas -->
+  <div id="map"></div>
+
+  <!-- Bottom Timeline Playback Controller -->
+  <div class="rdt-bottom-bar">
+    <button id="btn-prev" class="rdt-ctrl-btn" title="ย้อนกลับ 1 รอบ">⏮</button>
+    <button id="btn-play" class="rdt-ctrl-btn" title="เล่นภาพเคลื่อนไหว">▶</button>
+    <button id="btn-next" class="rdt-ctrl-btn" title="ไปข้างหน้า 1 รอบ">⏭</button>
+
+    <div class="rdt-slider-wrap">
+      <div class="rdt-slider-labels">
+        <span id="slider-start-lbl">05:00 UTC</span>
+        <span>HIMAWARI-8/9 AHI SATELLITE CONVECTION REPLAY (10-MIN RESOLUTION)</span>
+        <span id="slider-end-lbl">09:50 UTC</span>
+      </div>
+      <input type="range" id="timeline-slider" class="rdt-slider" min="0" max="0" value="0">
+    </div>
+  </div>
+
+  <!-- Local Leaflet Vendor JS -->
+  <script src="/static/vendor/leaflet.js"></script>
+
+  <!-- RDT Application JS -->
+  <script src="/static/app.js"></script>
+
+</body>
+</html>

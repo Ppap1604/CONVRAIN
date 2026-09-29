@@ -1,0 +1,162 @@
+# ==============================================================================
+# .gitignore for convrain (Himawari Radar/Satellite Precipitation Nowcasting)
+# ป้องกันไฟล์ขนาดใหญ่ แคช และผลลัพธ์การรัน ไม่ให้เปลือง Context / Token ของ AI Agent
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Project Run Directories & Outputs (โฟลเดอร์ผลลัพธ์และรันโมเดล)
+# ------------------------------------------------------------------------------
+outputs/
+runs/
+models/
+reports/
+nowcast/
+INCOMING/
+RAW/
+raw/
+incoming/
+temp/
+tmp/
+
+# ------------------------------------------------------------------------------
+# 2. Datasets & Raw Satellite / Radar Data (ข้อมูลดิบและดาต้าเซ็ตขนาดใหญ่)
+# ------------------------------------------------------------------------------
+data/
+datasets/
+
+# Himawari Satellite Raw & Compressed Scans (HSD files)
+*.DAT
+*.DAT.*
+*.bz2
+*.tar
+*.tar.gz
+*.gz
+*.zip
+*.7z
+
+# NetCDF, HDF, GRIB, GeoTIFF (Radar & Satellite Grid)
+*.nc
+*.nc4
+*.h5
+*.hdf
+*.hdf5
+*.grib
+*.grib2
+*.grb
+*.tif
+*.tiff
+*.geotiff
+
+# Tabular & Serialized Formats (Timeseries, Features, Logs)
+*.parquet
+*.feather
+*.arrow
+*.jsonl
+
+# NumPy arrays & ML Models / Serialized Weights
+*.npz
+*.npy
+*.joblib
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.onnx
+*.tflite
+*.bin
+*.weights
+*.safetensors
+
+# Large GeoJSON / JSON files generated in runs/outputs/nowcast
+runs/**/*.geojson
+runs/**/*.json
+outputs/**/*.geojson
+outputs/**/*.json
+nowcast/**/*.geojson
+nowcast/**/*.json
+
+# ------------------------------------------------------------------------------
+# 3. Python Bytecode & Virtual Environments (สภาพแวดล้อมและแคชภาษา Python)
+# ------------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.conda/
+conda-env/
+env.bak/
+venv.bak/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+
+# ------------------------------------------------------------------------------
+# 4. Jupyter Notebooks & Scientific Libraries Cache
+# ------------------------------------------------------------------------------
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+.cache/
+.satpy/
+satpy_cache/
+.matplotlib/
+
+# ------------------------------------------------------------------------------
+# 5. Testing, Linting & Coverage
+# ------------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+nosetests.xml
+
+# ------------------------------------------------------------------------------
+# 6. Logs & Experiment Tracking
+# ------------------------------------------------------------------------------
+logs/
+*.log
+*.log.*
+wandb/
+mlruns/
+lightning_logs/
+
+# ------------------------------------------------------------------------------
+# 7. OS & IDE / Editor Artifacts
+# ------------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.temp
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# ------------------------------------------------------------------------------
+# 8. Exceptions / Keep sample files (ยกเว้นไฟล์ตัวอย่างสำหรับทดสอบ)
+# ------------------------------------------------------------------------------
+!examples/
+!examples/*

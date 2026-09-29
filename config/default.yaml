@@ -1,0 +1,91 @@
+# =====================================================================
+# ไฟล์ตั้งค่าหลักของระบบ convrain
+# ค่าทั้งหมดเป็น "ค่าตั้งต้น" ต้องจูนใหม่ด้วยข้อมูลของประเทศไทย (Phase 2–5)
+# อ้างอิงหัวข้อในเอกสาร workflow: ขั้น 0–6 = หัวข้อ 3–9
+# =====================================================================
+
+# ---------- โดเมนที่ประมวลผล (หัวข้อ 3 ขั้นตอนที่ 1) ----------
+domain:
+  lat_min: 4.0
+  lat_max: 22.0
+  lon_min: 96.0
+  lon_max: 107.0
+
+# ---------- ข้อมูลดาวเทียม (ขั้น 0) ----------
+satellite:
+  name: himawari-9
+  sub_lon: 140.7            # ลองจิจูดจุดใต้ดาวเทียม (องศาตะวันออก)
+  orbit_radius_km: 42164.0  # รัศมีวงโคจรค้างฟ้าจากศูนย์กลางโลก
+  scan_interval_min: 10     # full disk ทุก 10 นาที
+  # band ที่ใช้: B08=6.2, B10=7.3, B11=8.6, B13=10.4, B14=11.2, B15=12.4, B16=13.3 µm
+  bands: [B08, B10, B11, B13, B14, B15, B16]
+
+ingest:
+  max_gap_min: 30           # ถ้า scan ขาดนานกว่านี้ให้ reset tracker
+  static_file: null         # NetCDF ที่มี land_mask และ elevation_m บน grid เดียวกับ scan (ทางเลือก)
+
+# ---------- ขั้น 1: Detection (หัวข้อ 4) ----------
+detect:
+  thresholds_k: [273.0, 253.0, 235.0, 220.0]   # threshold ซ้อน (อุ่น → เย็น) ตัวแรกคือ T1
+  min_area_px: 4            # A_min: object ที่เล็กกว่านี้ถือเป็น noise
+  drop_edge_objects: true   # ตัด object ที่แตะขอบโดเมน
+  thin_cirrus_btd_sw: 3.0   # BTD(10.4-12.4) สูงกว่านี้ + BT เย็น = cirrus บาง
+  thin_cirrus_bt_max: 253.0 # ใช้เกณฑ์ cirrus เฉพาะ pixel ที่เย็นกว่าค่านี้
+
+# ---------- ขั้น 2: Motion field (หัวข้อ 5) ----------
+motion:
+  method: dis               # dis = DIS optical flow (OpenCV), phase = global shift สำรอง
+  downsample: 2             # ลดความละเอียดก่อนคำนวณ flow
+  bt_clip: [190.0, 300.0]   # ช่วง BT ที่แปลงเป็นภาพ 8-bit
+  smooth_sigma_px: 2.0      # Gaussian smoothing ของ field (หน่วย pixel ของภาพที่ downsample)
+  max_speed_ms: 40.0        # QC: ความเร็วสูงกว่านี้ถือว่าผิด
+  temporal_alpha: 0.5       # น้ำหนัก field ใหม่ใน exponential smoothing ข้ามเวลา
+  pixel_size_km: 2.0        # ขนาด pixel โดยประมาณ ใช้แปลง pixel/scan → m/s (คำนวณจริงจาก lat/lon ถ้ามี)
+
+# ---------- ขั้น 3: Tracking (หัวข้อ 6) ----------
+track:
+  min_overlap: 0.3          # overlap ratio ขั้นต่ำที่ถือว่าเป็นก้อนเดียวกัน
+  max_missed_scans: 1       # เก็บ track ที่หายไปได้กี่ scan ก่อนปิด
+  age_bonus: 0.05           # ตอนจับคู่ ให้ track ที่อายุมากกว่าได้เปรียบเล็กน้อย (กรณี merge)
+  kalman:
+    q_bt: 1.0               # process noise ของ min BT (K^2 ต่อ scan)
+    r_bt: 1.0               # measurement noise ของ min BT (K^2)
+    q_area: 0.02            # process noise ของ log(area)
+    r_area: 0.05            # measurement noise ของ log(area)
+
+# ---------- ขั้น 4: Features (หัวข้อ 7) ----------
+features:
+  trend_windows_min: [10, 20, 30]
+  cold_fraction: 0.1        # ใช้ค่าเฉลี่ยของ 10% pixel ที่เย็นที่สุด
+
+# ---------- ขั้น 5: Onset (หัวข้อ 8) ----------
+onset:
+  prefilter_max_min_bt: 283.0   # ส่งเข้าโมเดลเฉพาะ object ที่ min BT < ค่านี้
+  prefilter_min_age_scans: 2    # และมีอายุอย่างน้อยกี่ scan
+  horizon_steps: 6              # 6 ช่วง × 10 นาที = 60 นาที
+  step_min: 10
+  warn_threshold: 0.5           # P(onset ≤ 30 นาที) ที่ใช้ออกคำเตือน (จูนจาก CSI บน validation)
+  eta_quantiles: [0.25, 0.5, 0.75]
+  eta_min_halfwidth_min: 5.0    # ช่วง ETA กว้างอย่างน้อย ±5 นาที (เพดานจาก scan ทุก 10 นาที)
+
+# ---------- ขั้น 6: Intensity / lifecycle (หัวข้อ 9) ----------
+intensity:
+  rain_threshold_mmh: 1.0   # rain rate ขั้นต่ำที่ถือว่าฝนตก
+  peak_rate_tol_k: 1.0      # |cooling rate| < ค่านี้ (K/10 นาที) = ใกล้ peak
+  decay_rate_k: 1.5         # warming rate > ค่านี้ (K/10 นาที) = กำลังสลาย
+
+parallax:
+  enabled: true
+  profile: tropical         # profile อุณหภูมิที่ใช้แปลง BT → ความสูงยอดเมฆ
+
+# ---------- Label (หัวข้อ 10) ----------
+labels:
+  onset_dbz: 35.0           # นิยาม onset ตาม Mecikalski & Bedka (2006)
+  stop_dbz: 20.0            # ต่ำกว่านี้ต่อเนื่อง = ฝนหยุด
+  stop_consecutive_scans: 2 # ต้องต่ำกว่าเกณฑ์กี่ scan ติดกัน
+  buffer_px: 1              # ขยายขอบ object ตอนจับคู่กับเรดาร์
+
+# ---------- Output (หัวข้อ 9.5) ----------
+output:
+  model_version: untrained
+  write_footprints: true

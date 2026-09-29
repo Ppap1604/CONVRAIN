@@ -1,0 +1,257 @@
+{
+  "scan_time": "2026-05-20T07:20:00Z",
+  "model_version": "onset-hazard-lightgbm+peak-hazard-lightgbm+stop-hazard-lightgbm",
+  "objects": [
+    {
+      "object_id": "obj_20260520_0540_00002",
+      "parent_id": null,
+      "age_min": 100.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.2489,
+          14.4185
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0540_00002",
+      "cloud_top": {
+        "min_bt_10p4": 260.6,
+        "cooling_rate_10min_K": 2.86,
+        "cloud_top_height_km": 6.3
+      },
+      "onset": {
+        "p_within_30min": 0.14,
+        "p_within_60min": 0.354,
+        "eta_median": null,
+        "eta_window": null
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 5.7,
+        "direction_deg": 142.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0540_00003",
+      "parent_id": null,
+      "age_min": 100.0,
+      "status": "raining",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          100.4041,
+          13.5408
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0540_00003",
+      "cloud_top": {
+        "min_bt_10p4": 223.5,
+        "cooling_rate_10min_K": -4.12,
+        "cloud_top_height_km": 11.4
+      },
+      "onset": {
+        "p_within_30min": null,
+        "p_within_60min": null,
+        "eta_median": null,
+        "eta_window": null
+      },
+      "intensity": {
+        "rain_rate_mm_hr": 1.8,
+        "peak_eta": "2026-05-20T07:42:03Z",
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 5.4,
+        "direction_deg": 127.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0550_00004",
+      "parent_id": null,
+      "age_min": 90.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.0688,
+          14.1951
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0550_00004",
+      "cloud_top": {
+        "min_bt_10p4": 230.8,
+        "cooling_rate_10min_K": -3.91,
+        "cloud_top_height_km": 10.4
+      },
+      "onset": {
+        "p_within_30min": 1.0,
+        "p_within_60min": 1.0,
+        "eta_median": "2026-05-20T07:27:30Z",
+        "eta_window": [
+          "2026-05-20T07:22:30Z",
+          "2026-05-20T07:32:30Z"
+        ]
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 4.9,
+        "direction_deg": 149.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0550_00005",
+      "parent_id": null,
+      "age_min": 90.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.4052,
+          13.464
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0550_00005",
+      "cloud_top": {
+        "min_bt_10p4": 259.5,
+        "cooling_rate_10min_K": 1.25,
+        "cloud_top_height_km": 6.5
+      },
+      "onset": {
+        "p_within_30min": 0.0,
+        "p_within_60min": 0.1,
+        "eta_median": null,
+        "eta_window": null
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 7.2,
+        "direction_deg": 139.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0700_00008",
+      "parent_id": null,
+      "age_min": 20.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.1092,
+          12.8316
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0700_00008",
+      "cloud_top": {
+        "min_bt_10p4": 256.7,
+        "cooling_rate_10min_K": -5.09,
+        "cloud_top_height_km": 6.9
+      },
+      "onset": {
+        "p_within_30min": 0.532,
+        "p_within_60min": 1.0,
+        "eta_median": "2026-05-20T07:49:13Z",
+        "eta_window": [
+          "2026-05-20T07:43:06Z",
+          "2026-05-20T07:55:42Z"
+        ]
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 6.7,
+        "direction_deg": 153.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0710_00009",
+      "parent_id": null,
+      "age_min": 10.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          102.0791,
+          14.7116
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0710_00009",
+      "cloud_top": {
+        "min_bt_10p4": 266.1,
+        "cooling_rate_10min_K": -3.62,
+        "cloud_top_height_km": 5.6
+      },
+      "onset": {
+        "p_within_30min": 0.068,
+        "p_within_60min": 0.225,
+        "eta_median": null,
+        "eta_window": null
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 4.3,
+        "direction_deg": 114.0
+      }
+    },
+    {
+      "object_id": "obj_20260520_0720_00010",
+      "parent_id": null,
+      "age_min": 0.0,
+      "status": "developing",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          101.7325,
+          13.8565
+        ]
+      },
+      "geometry_parallax_corrected": true,
+      "footprint_polygon": "footprints_20260520T0720Z.geojson#obj_20260520_0720_00010",
+      "cloud_top": {
+        "min_bt_10p4": 271.5,
+        "cooling_rate_10min_K": 0.0,
+        "cloud_top_height_km": 4.8
+      },
+      "onset": {
+        "p_within_30min": null,
+        "p_within_60min": null,
+        "eta_median": null,
+        "eta_window": null
+      },
+      "intensity": {
+        "rain_rate_mm_hr": null,
+        "peak_eta": null,
+        "stop_eta": null
+      },
+      "motion": {
+        "speed_ms": 5.9,
+        "direction_deg": 162.0
+      }
+    }
+  ]
+}

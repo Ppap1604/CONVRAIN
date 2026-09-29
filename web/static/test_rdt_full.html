@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <title>RDT Convection Map Preview</title>
+  <link rel="stylesheet" href="/static/vendor/leaflet.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #map { width: 100%; height: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    /* Exact RDT Basemap Filter */
+    .rdt-ocean-tiles {
+      filter: contrast(112%) brightness(88%) saturate(75%) sepia(14%);
+    }
+
+    /* Top Left Product Tab (RDT NWC SAF Style) */
+    .rdt-product-tab {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: #3b5059;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border: 1px solid #23343b;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 2px;
+      cursor: default;
+    }
+    .rdt-tab-close {
+      color: #a4b4bb;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .rdt-tab-close:hover { color: #fff; }
+
+    /* Left Menu Button */
+    .rdt-menu-btn {
+      position: absolute;
+      top: 38px;
+      left: 10px;
+      z-index: 1000;
+      background: #50656e;
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border: 1px solid #23343b;
+      border-radius: 2px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .rdt-menu-btn:hover { background: #3b5059; }
+
+    /* Graticule labels */
+    .graticule-label {
+      font-size: 10px;
+      font-family: monospace;
+      color: #64748b;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    /* Motion vector arrowhead marker */
+    .black-arrow-icon {
+      overflow: visible !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="rdt-product-tab">
+    <span>RDT CONVRAIN [2026/05/20 07:20], Ech000H pour mar. 20/05 à 07:20UTC</span>
+    <span class="rdt-tab-close">✕</span>
+  </div>
+  <button class="rdt-menu-btn">∨ Menu</button>
+
+  <div id="map"></div>
+
+  <script src="/static/vendor/leaflet.js"></script>
+  <script>
+    const map = L.map('map', {
+      center: [13.8, 100.8],
+      zoom: 8,
+      zoomControl: true
+    });
+
+    // 1. Esri Ocean Basemap with RDT styling
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
+      className: 'rdt-ocean-tiles',
+      maxZoom: 16
+    }).addTo(map);
+
+    // 2. Lat/Lon Graticule Lines (Grid)
+    const lats = [12, 13, 14, 15, 16];
+    const lons = [98, 99, 100, 101, 102, 103, 104];
+    
+    lats.forEach(lat => {
+      L.polyline([[lat, 96], [lat, 106]], {
+        color: '#788896',
+        weight: 0.8,
+        opacity: 0.6,
+        dashArray: '3, 4'
+      }).addTo(map);
+
+      L.marker([lat, 98.2], {
+        icon: L.divIcon({
+          className: 'graticule-label',
+          html: `${lat}°N`,
+          iconSize: [40, 14]
+        })
+      }).addTo(map);
+    });
+
+    lons.forEach(lon => {
+      L.polyline([[10, lon], [18, lon]], {
+        color: '#788896',
+        weight: 0.8,
+        opacity: 0.6,
+        dashArray: '3, 4'
+      }).addTo(map);
+
+      L.marker([16.5, lon], {
+        icon: L.divIcon({
+          className: 'graticule-label',
+          html: `${lon}°E`,
+          iconSize: [40, 14]
+        })
+      }).addTo(map);
+    });
+
+    // 3. Load latest scan from API and render in RDT Style
+    fetch('/api/scans/20260520T0720Z')
+      .then(res => res.json())
+      .then(data => {
+        const doc = data.doc;
+        const footprints = data.footprints;
+
+        // Render footprints with RDT multi-level styling
+        if (footprints && footprints.features) {
+          L.geoJSON(footprints, {
+            style: (feature) => {
+              const oid = feature.id || feature.properties.object_id;
+              const obj = doc.objects.find(o => o.object_id === oid);
+              const status = obj ? obj.status : 'developing';
+
+              if (status === 'raining' || status === 'peak') {
+                return {
+                  color: '#dc2626',      // Red contour
+                  weight: 2.2,
+                  fillColor: '#22d3ee',  // Convective core cyan
+                  fillOpacity: 0.55
+                };
+              } else if (status === 'developing') {
+                return {
+                  color: '#d946ef',      // Magenta / Fuchsia contour
+                  weight: 2.2,
+                  fillColor: '#fde047',  // Convective yellow core
+                  fillOpacity: 0.45
+                };
+              } else {
+                return {
+                  color: '#2563eb',      // Dashed blue
+                  weight: 1.8,
+                  dashArray: '5, 5',
+                  fillColor: '#93c5fd',
+                  fillOpacity: 0.25
+                };
+              }
+            }
+          }).addTo(map);
+        }
+
+        // Render Projected Impacts as dashed polygons (like bottom Libya cells)
+        if (data.impact_zones && data.impact_zones.features) {
+          L.geoJSON(data.impact_zones, {
+            style: {
+              color: '#dc2626',
+              weight: 1.8,
+              dashArray: '4, 4',
+              fillColor: '#fca5a5',
+              fillOpacity: 0.2
+            }
+          }).addTo(map);
+        }
+
+        // Render Solid Black Motion Arrows (RDT Signature Vector)
+        data.trajectories.forEach(traj => {
+          const c_lon = traj.origin[0];
+          const c_lat = traj.origin[1];
+          const dir = traj.direction_deg;
+          const speed = traj.speed_ms;
+
+          // Calculate vector endpoint (proportional to velocity, ~30 min displacement)
+          const dist_m = speed * 1800; // 30 min in meters
+          const d_lat = (dist_m * Math.cos(dir * Math.PI / 180)) / 111139.0;
+          const d_lon = (dist_m * Math.sin(dir * Math.PI / 180)) / (111139.0 * Math.cos(c_lat * Math.PI / 180));
+
+          const end_lat = c_lat + d_lat;
+          const end_lon = c_lon + d_lon;
+
+          // Solid black arrow shaft
+          L.polyline([[c_lat, c_lon], [end_lat, end_lon]], {
+            color: '#000000',
+            weight: 2.2,
+            opacity: 1
+          }).addTo(map);
+
+          // Solid black arrowhead SVG
+          const arrowAngle = dir;
+          const arrowIcon = L.divIcon({
+            className: 'black-arrow-icon',
+            html: `
+              <div style="transform: rotate(${arrowAngle}deg); transform-origin: 0px 0px;">
+                <svg width="18" height="18" viewBox="0 0 20 20" style="margin-left: -5px; margin-top: -10px;">
+                  <polygon points="0,4 16,10 0,16 4,10" fill="#000000" stroke="#000000" stroke-width="0.5"/>
+                </svg>
+              </div>
+            `,
+            iconSize: [0, 0]
+          });
+          L.marker([end_lat, end_lon], { icon: arrowIcon }).addTo(map);
+
+          // Trailing yellow path (past/future trajectory)
+          if (traj.path && traj.path.length > 2) {
+            L.polyline(traj.path.map(p => [p[1], p[0]]), {
+              color: '#eab308',
+              weight: 1.5,
+              opacity: 0.85
+            }).addTo(map);
+          }
+        });
+      });
+  </script>
+</body>
+</html>
