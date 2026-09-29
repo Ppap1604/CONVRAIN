@@ -386,10 +386,26 @@ def compute_trajectories_and_impacts(scan_doc: dict[str, Any], footprints_fc: di
 
     trajectories = []
     impact_features = []
-
     time_ticks = [15, 30, 45, 60]
 
-    for obj in objects:
+    # จัดลำดับความสำคัญ: เซลล์ฝนตกและเซลล์พัฒนาตัวยอดสูงจะได้รับความสำคัญสูงสุด
+    def _obj_rank(o):
+        st = o.get("status", "")
+        h = (o.get("cloud_top") or {}).get("cloud_top_height_km") or 0.0
+        p30 = (o.get("onset") or {}).get("p_within_30min") or 0.0
+        spd = (o.get("motion") or {}).get("speed_ms") or 0.0
+        base = 0.0
+        if st in ["raining", "peak"]:
+            base = 200.0
+        elif st == "developing":
+            base = 100.0 + p30 * 50.0
+        return base + h * 2.0 + min(spd, 20.0)
+
+    # เพื่อประสิทธิภาพและการแสดงผลที่คมชัด กรองสูงสุด 120 เซลล์หลัก
+    sorted_objects = sorted(objects, key=_obj_rank, reverse=True)
+    target_objects = sorted_objects[:120] if len(sorted_objects) > 120 else sorted_objects
+
+    for obj in target_objects:
         oid = obj["object_id"]
         status = obj.get("status", "unknown")
         c_lon, c_lat = obj["geometry"]["coordinates"]

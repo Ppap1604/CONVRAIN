@@ -16,8 +16,8 @@
   <!-- Top Left Product Tab (EUMETSAT / SpaceX Hybrid) -->
   <div class="rdt-product-tab">
     <div class="rdt-tab-title">
-      <span class="rdt-badge-live">LIVE</span>
-      <span id="rdt-product-title">RDT CONVRAIN [2026/05/20 07:20], Ech000H pour 07:20UTC</span>
+      <span class="rdt-badge-live" id="dataset-badge" style="background: #0284c7;">REAL SATELLITE</span>
+      <span id="rdt-product-title">RDT CONVRAIN [2026/09/28 08:00], Ech000H pour 15:00 น. (08:00UTC)</span>
     </div>
     <span class="rdt-tab-close" onclick="this.parentElement.style.display='none'">✕</span>
   </div>
@@ -27,6 +27,11 @@
 
   <!-- Top Right Layer Toolbar HUD -->
   <div class="rdt-layer-toolbar">
+    <button id="btn-dataset-switch" class="rdt-btn-layer" style="border-color: #38bdf8; color: #38bdf8;" title="คลิกเพื่อสลับระหว่างข้อมูลจริง Himawari-9 และข้อมูลทดสอบ">
+      <span id="dataset-icon">🛰️</span>
+      <span id="dataset-name">ข้อมูลจริง Himawari-9</span>
+    </button>
+
     <button id="toggle-theme" class="rdt-btn-layer theme-btn" title="สลับโหมดมืด (Dark Mode) และโหมดสว่าง RDT Classic">
       <span id="icon-theme">🌙</span>
       <span id="lbl-theme">Dark Mode</span>
@@ -89,6 +94,8 @@
         <span class="preset-item" data-lat="13.3611" data-lon="100.9847">ชลบุรี</span>
         <span class="preset-item" data-lat="14.2069" data-lon="101.2131">นครนายก</span>
         <span class="preset-item" data-lat="14.0510" data-lon="101.3734">ปราจีนบุรี</span>
+        <span class="preset-item" data-lat="16.8467" data-lon="101.5753">เพชรบูรณ์ (ฝนตก)</span>
+        <span class="preset-item" data-lat="13.2267" data-lon="99.2093">เพชรบุรี (ฝนตก)</span>
       </div>
 
       <!-- Point Alert Output Card -->
@@ -138,9 +145,9 @@
 
     <div class="rdt-slider-wrap">
       <div class="rdt-slider-labels">
-        <span id="slider-start-lbl">05:00 UTC</span>
-        <span>HIMAWARI-8/9 AHI SATELLITE CONVECTION REPLAY (10-MIN RESOLUTION)</span>
-        <span id="slider-end-lbl">09:50 UTC</span>
+        <span id="slider-start-lbl">06:00 UTC</span>
+        <span id="slider-sub-lbl">HIMAWARI-8/9 AHI SATELLITE + THAILAND RADAR (28 ก.ย. 2026)</span>
+        <span id="slider-end-lbl">08:00 UTC</span>
       </div>
       <input type="range" id="timeline-slider" class="rdt-slider" min="0" max="0" value="0">
     </div>

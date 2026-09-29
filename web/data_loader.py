@@ -11,11 +11,27 @@ from pathlib import Path
 from typing import Any
 
 CANDIDATE_DIRS = [
-    Path("nowcast"),
-    Path("runs/2025/realtime"),
+    Path("runs/real_nowcast"),
     Path("runs/test_real"),
+    Path("runs/2025/realtime"),
+    Path("nowcast"),
     Path("examples"),
 ]
+
+AVAILABLE_DATASETS = {
+    "real": {
+        "id": "real",
+        "name": "🛰️ ข้อมูลจริง Himawari-9 AHI + Radar (28 ก.ย. 2026)",
+        "path": Path("runs/real_nowcast"),
+        "is_real": True,
+    },
+    "simulation": {
+        "id": "simulation",
+        "name": "🧪 ข้อมูลทดสอบ 30 สแกน (Simulation Replay)",
+        "path": Path("runs/2025/realtime"),
+        "is_real": False,
+    },
+}
 
 
 class ConvrainDataLoader:
@@ -32,6 +48,16 @@ class ConvrainDataLoader:
         if Path("examples").exists():
             return Path("examples")
         return Path("nowcast")
+
+    def set_dataset(self, dataset_id: str) -> bool:
+        if dataset_id in AVAILABLE_DATASETS:
+            target_path = AVAILABLE_DATASETS[dataset_id]["path"]
+            if target_path.exists():
+                self.base_dir = target_path
+                self._cache_json.clear()
+                self._cache_geojson.clear()
+                return True
+        return False
 
     def get_source_info(self) -> dict[str, Any]:
         return {

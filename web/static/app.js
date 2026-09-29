@@ -198,6 +198,24 @@ function setupEventListeners() {
     });
   }
 
+  // Dataset Switcher (Real Satellite Data <-> Simulation)
+  const datasetBtn = document.getElementById('btn-dataset-switch');
+  if (datasetBtn) {
+    datasetBtn.addEventListener('click', async () => {
+      try {
+        const dsRes = await fetch('/api/datasets');
+        const dsData = await dsRes.json();
+        const nextId = dsData.current === 'real' ? 'simulation' : 'real';
+        await fetch(`/api/datasets/${nextId}`, { method: 'POST' });
+        updateDatasetUI(nextId);
+        hasInitializedBounds = false;
+        await loadScans();
+      } catch (err) {
+        console.error('Failed to switch dataset:', err);
+      }
+    });
+  }
+
   // Theme Switcher (Dark Mode <-> Light RDT)
   const themeBtn = document.getElementById('toggle-theme');
   const themeLbl = document.getElementById('lbl-theme');
@@ -558,9 +576,35 @@ function renderPointNowcastResult(data) {
   `;
 }
 
+function updateDatasetUI(datasetId) {
+  const isReal = datasetId === 'real';
+  const nameLbl = document.getElementById('dataset-name');
+  const iconLbl = document.getElementById('dataset-icon');
+  const badge = document.getElementById('dataset-badge');
+  const sliderSub = document.getElementById('slider-sub-lbl');
+
+  if (nameLbl) nameLbl.innerText = isReal ? 'ข้อมูลจริง Himawari-9' : 'ข้อมูลจำลอง (Simulation)';
+  if (iconLbl) iconLbl.innerText = isReal ? '🛰️' : '🧪';
+  if (badge) {
+    badge.innerText = isReal ? 'REAL SATELLITE' : 'SIMULATION';
+    badge.style.background = isReal ? '#0284c7' : '#22c55e';
+  }
+  if (sliderSub) {
+    sliderSub.innerText = isReal
+      ? 'HIMAWARI-8/9 AHI SATELLITE + THAILAND RADAR (28 ก.ย. 2026)'
+      : 'HIMAWARI-8/9 AHI SATELLITE CONVECTION REPLAY (10-MIN RESOLUTION)';
+  }
+}
+
 // 8. Load Scans List from API
 async function loadScans() {
   try {
+    try {
+      const dsRes = await fetch('/api/datasets');
+      const dsData = await dsRes.json();
+      updateDatasetUI(dsData.current);
+    } catch (e) {}
+
     const res = await fetch('/api/scans');
     const data = await res.json();
     allScans = data.scans || [];
@@ -643,15 +687,10 @@ function renderScan(data) {
     renderRdtMotionArrow(traj);
   });
 
-  // Auto-center bounds on first load
-  if (!hasInitializedBounds && footprints && footprints.features && footprints.features.length > 0) {
-    try {
-      const bounds = footprintsLayer.getBounds();
-      if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [100, 100], maxZoom: 10 });
-        hasInitializedBounds = true;
-      }
-    } catch (e) {}
+  // Auto-center bounds on first load focused on Thailand
+  if (!hasInitializedBounds) {
+    map.setView([14.8, 101.2], 7);
+    hasInitializedBounds = true;
   }
 
   if (map) map.invalidateSize();
@@ -666,9 +705,9 @@ function renderSatelliteCloudLayer(scanData) {
     return;
   }
 
-  // Domain bounding box covering the region
-  const minLat = 10.8, maxLat = 17.0;
-  const minLon = 97.8, maxLon = 105.0;
+  // Full extent bounding box covering Thailand & surrounding seas
+  const minLat = 4.0, maxLat = 22.0;
+  const minLon = 93.0, maxLon = 110.0;
   const bounds = [[minLat, minLon], [maxLat, maxLon]];
 
   // 1024x1024 High-Resolution Offscreen Canvas
@@ -686,27 +725,15 @@ function renderSatelliteCloudLayer(scanData) {
 
   const isDark = isDarkMode;
 
-  // A. Ambient regional satellite cloud moisture & wispy cirrus streaks (SW to NE flow)
-  ctx.save();
-  for (let i = 0; i < 5; i++) {
-    const ySeed = 180 + i * 160;
-    const gradAmbient = ctx.createLinearGradient(0, ySeed + 80, canvas.width, ySeed - 80);
-    const ambientAlpha = isDark ? 0.07 : 0.08;
-    gradAmbient.addColorStop(0, 'rgba(0,0,0,0)');
-    gradAmbient.addColorStop(0.35, isDark ? `rgba(220, 235, 250, ${ambientAlpha})` : `rgba(110, 125, 145, ${ambientAlpha})`);
-    gradAmbient.addColorStop(0.65, isDark ? `rgba(200, 220, 240, ${ambientAlpha * 0.75})` : `rgba(125, 140, 160, ${ambientAlpha * 0.75})`);
-    gradAmbient.addColorStop(1, 'rgba(0,0,0,0)');
+  // Draw convective cloud canopies (core + spreading anvil canopy blown downwind)
+  const allObjects = (scanData && scanData.doc && scanData.doc.objects) || [];
+  // จัดลำดับยอดเมฆสูงและเย็นที่สุด เพื่อวาดรัศมีเงาเมฆฟุ้ง 200 เซลล์หลักอย่างรวดเร็ว
+  const objects = [...allObjects].sort((a, b) => {
+    const ha = (a.cloud_top && a.cloud_top.cloud_top_height_km) || 0;
+    const hb = (b.cloud_top && b.cloud_top.cloud_top_height_km) || 0;
+    return hb - ha;
+  }).slice(0, 200);
 
-    ctx.fillStyle = gradAmbient;
-    ctx.beginPath();
-    ctx.ellipse(canvas.width * 0.5, ySeed, canvas.width * 0.65, 80, -0.12, 0, Math.PI * 2);
-    ctx.filter = 'blur(40px)';
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // B. Draw convective cloud canopies (core + spreading anvil canopy blown downwind)
-  const objects = (scanData && scanData.doc && scanData.doc.objects) || [];
   objects.forEach((obj) => {
     const coords = obj.geometry.coordinates; // [lon, lat]
     const center = toPx(coords[1], coords[0]);
@@ -761,7 +788,8 @@ function renderSatelliteCloudLayer(scanData) {
 
   // C. Draw footprint contours with soft feathered Gaussian blur
   // This binds the dense cloud core directly to the actual satellite footprint shape
-  const footprints = (scanData && scanData.footprints && scanData.footprints.features) || [];
+  const allFootprints = (scanData && scanData.footprints && scanData.footprints.features) || [];
+  const footprints = allFootprints.slice(0, 200);
   ctx.save();
   ctx.filter = 'blur(12px)';
   footprints.forEach((feat) => {

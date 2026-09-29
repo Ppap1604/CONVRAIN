@@ -51,6 +51,41 @@ def get_source_info():
     return loader.get_source_info()
 
 
+@app.get("/api/datasets")
+def get_datasets():
+    """รายการชุดข้อมูลที่มีในระบบ (ข้อมูลจริง vs ข้อมูลจำลอง)"""
+    current_id = "real" if "real_nowcast" in str(loader.base_dir) else "simulation"
+    return {
+        "current": current_id,
+        "datasets": [
+            {
+                "id": "real",
+                "name": "🛰️ ข้อมูลจริง Himawari-9 (28 ก.ย. 2026)",
+                "path": "runs/real_nowcast",
+                "is_real": True,
+            },
+            {
+                "id": "simulation",
+                "name": "🧪 ข้อมูลจำลอง 30 สแกน (Simulation)",
+                "path": "runs/2025/realtime",
+                "is_real": False,
+            },
+        ],
+    }
+
+
+@app.post("/api/datasets/{dataset_id}")
+def switch_dataset(dataset_id: str):
+    """สลับชุดข้อมูลที่แสดงผลบนเว็บ"""
+    if not loader.set_dataset(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return {
+        "status": "ok",
+        "current": dataset_id,
+        "scan_count": len(loader.list_scans()),
+    }
+
+
 @app.get("/api/scans")
 def list_scans():
     """รายการ scan ทั้งหมดในระบบ"""

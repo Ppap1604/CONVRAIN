@@ -25,17 +25,17 @@ from .track import Track
 # feature ที่ส่งเข้าโมเดล (ขั้น 5) ค่า default — ปรับได้ตอน train
 MODEL_FEATURES = [
     # ความสูงยอดเมฆ
-    "min_bt", "cold_bt", "mean_bt", "below_0c", "min_since_below_0c",
+    "min_bt", "cold_bt", "mean_bt", "below_0c", "min_since_below_0c", "cold_bt_kf",
     # การโตของ updraft
     "cooling_rate_kf", "cooling_rate_std", "d_cold_bt_10", "d_cold_bt_20", "d_cold_bt_30",
     "log_area", "area_growth_kf", "d_log_area_30",
     # ความสูงเทียบ troposphere
     "btd_wv_cold", "btd_wv_max", "btd_73_cold", "btd_co2_cold",
-    "d_btd_wv_10", "d_btd_wv_30", "d_btd_co2_30",
+    "d_btd_wv_10", "d_btd_wv_30", "d_btd_co2_30", "d_btd_73_10", "d_btd_73_30",
     # phase ยอดเมฆ
     "ttd_cold", "ttd_max", "d_ttd_10", "d_ttd_30",
     # ความหนาเมฆ
-    "btd_sw_cold",
+    "btd_sw_cold", "d_btd_sw_10", "d_btd_sw_30",
     # บริบท
     "age_min", "lst_sin", "lst_cos", "land_frac", "elev_mean", "sat_zenith",
     # track ขั้นก่อนหน้า
@@ -142,6 +142,8 @@ def compute_features(track: Track, scan: Scan, motion: MotionField | None, cfg: 
         f[f"d_ttd_{w}"] = _trend(track.history, now, f["ttd_cold"], "ttd_cold", w)
         f[f"d_btd_co2_{w}"] = _trend(track.history, now, f["btd_co2_cold"], "btd_co2_cold", w)
         f[f"d_log_area_{w}"] = _trend(track.history, now, f["log_area"], "log_area", w)
+        f[f"d_btd_sw_{w}"] = _trend(track.history, now, f["btd_sw_cold"], "btd_sw_cold", w)
+        f[f"d_btd_73_{w}"] = _trend(track.history, now, f["btd_73_cold"], "btd_73_cold", w)
 
     # ---- [ขั้น 4.3] บริบท: เวลาท้องถิ่น, พื้นผิว, มุมมอง ----
     lst_hours = (now.hour + now.minute / 60.0 + obj.lon / 15.0) % 24.0  # local solar time
