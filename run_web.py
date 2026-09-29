@@ -32,7 +32,7 @@ from web.data_loader import ConvrainDataLoader
 def main():
     parser = argparse.ArgumentParser(description="เปิดเว็บเซิร์ฟเวอร์ Convrain Nowcast Web Platform")
     parser.add_argument("--host", default="0.0.0.0", help="Host IP (default: 0.0.0.0)")
-    parser.add_argument("--port", type=int, default=8000, help="Port (default: 8000)")
+    parser.add_argument("--port", type=int, default=8500, help="Port (default: 8000)")
     parser.add_argument("--data-dir", default=None, help="โฟลเดอร์ output ของ convrain (เช่น runs/2025/realtime หรือ nowcast)")
     args = parser.parse_args()
 
