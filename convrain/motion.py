@@ -108,10 +108,13 @@ class MotionEstimator:
         c = self.cfg
         pixel_km = float(pixel_km or c["pixel_size_km"])
 
-        if self._dis is None:
-            u, v = self._phase_shift(prev_ir, curr_ir)
-        else:
+        method = c.get("method", "dis")
+        if method == "mcc" and cv2 is not None:
+            u, v = self._mcc_flow(prev_ir, curr_ir, dt_min, pixel_km)
+        elif self._dis is not None:
             u, v = self._dis_flow(prev_ir, curr_ir, dt_min, pixel_km)
+        else:
+            u, v = self._phase_shift(prev_ir, curr_ir)
 
         # [ขั้น 2.5] temporal smoothing กับ field ของ scan ก่อน (ลด jitter)
         a = float(c["temporal_alpha"])
@@ -148,6 +151,80 @@ class MotionEstimator:
         sigma = float(c["smooth_sigma_px"])
         u_s = _normalized_smooth(u_s, w, sigma)
         v_s = _normalized_smooth(v_s, w, sigma)
+        u = cv2.resize(u_s, (nx, ny), interpolation=cv2.INTER_LINEAR) * ds
+        v = cv2.resize(v_s, (nx, ny), interpolation=cv2.INTER_LINEAR) * ds
+        return u, v
+
+    # -----------------------------------------------------------------
+    # Maximum Cross-Correlation (MCC) with sub-pixel peak fitting
+    # -----------------------------------------------------------------
+    def _mcc_flow(self, prev_ir, curr_ir, dt_min, pixel_km):
+        c = self.cfg
+        ds = int(c.get("downsample", 2))
+        ny, nx = curr_ir.shape
+        a = _downsample(_to_uint8(prev_ir, c["bt_clip"]), ds)
+        b = _downsample(_to_uint8(curr_ir, c["bt_clip"]), ds)
+        h, w = a.shape
+
+        tile_size = int(c.get("mcc_tile_size", 24))
+        stride = int(c.get("mcc_stride", 12))
+        search_pad = int(c.get("mcc_search_pad", 14))
+
+        u_grid = np.zeros((h, w), dtype=np.float32)
+        v_grid = np.zeros((h, w), dtype=np.float32)
+        weight = np.zeros((h, w), dtype=np.float32)
+
+        cloudy = _downsample(((prev_ir < self.t1) | (curr_ir < self.t1)).astype(np.uint8) * 255, ds) > 127
+        max_px = c["max_speed_ms"] * dt_min * 60.0 / (pixel_km * 1000.0) / ds
+
+        half = tile_size // 2
+        for y in range(half, h - half, stride):
+            for x in range(half, w - half, stride):
+                if not cloudy[y - half:y + half, x - half:x + half].any():
+                    continue
+
+                patch = a[y - half:y + half, x - half:x + half]
+                sy0 = max(0, y - half - search_pad)
+                sy1 = min(h, y + half + search_pad)
+                sx0 = max(0, x - half - search_pad)
+                sx1 = min(w, x + half + search_pad)
+
+                search_area = b[sy0:sy1, sx0:sx1]
+                if search_area.shape[0] < patch.shape[0] or search_area.shape[1] < patch.shape[1]:
+                    continue
+
+                res = cv2.matchTemplate(search_area, patch, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, max_loc = cv2.minMaxLoc(res)
+                if max_val < float(c.get("mcc_min_corr", 0.35)):
+                    continue
+
+                px, py = max_loc
+                dx = float((sx0 + px) - (x - half))
+                dy = float((sy0 + py) - (y - half))
+
+                # Sub-pixel quadratic interpolation
+                if 0 < px < res.shape[1] - 1:
+                    denom_x = 2 * (2 * res[py, px] - res[py, px + 1] - res[py, px - 1])
+                    if abs(denom_x) > 1e-5:
+                        dx += (res[py, px + 1] - res[py, px - 1]) / denom_x
+                if 0 < py < res.shape[0] - 1:
+                    denom_y = 2 * (2 * res[py, px] - res[py + 1, px] - res[py - 1, px])
+                    if abs(denom_y) > 1e-5:
+                        dy += (res[py + 1, px] - res[py - 1, px]) / denom_y
+
+                if np.hypot(dx, dy) <= max_px:
+                    u_grid[y - half:y + half, x - half:x + half] += dx
+                    v_grid[y - half:y + half, x - half:x + half] += dy
+                    weight[y - half:y + half, x - half:x + half] += max_val
+
+        mask_nz = weight > 0
+        u_grid[mask_nz] /= weight[mask_nz]
+        v_grid[mask_nz] /= weight[mask_nz]
+
+        sigma = float(c["smooth_sigma_px"])
+        u_s = _normalized_smooth(u_grid, (weight > 0).astype(np.float32), sigma)
+        v_s = _normalized_smooth(v_grid, (weight > 0).astype(np.float32), sigma)
+
         u = cv2.resize(u_s, (nx, ny), interpolation=cv2.INTER_LINEAR) * ds
         v = cv2.resize(v_s, (nx, ny), interpolation=cv2.INTER_LINEAR) * ds
         return u, v

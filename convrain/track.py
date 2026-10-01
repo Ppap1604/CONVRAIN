@@ -75,6 +75,51 @@ class KalmanCV:
 
 
 # =====================================================================
+# [Kinematic EKF] ติดตามตำแหน่ง centroid (row, col) พร้อมความเร็ว
+# =====================================================================
+class KinematicEKF:
+    """
+    Extended Kinematic Filter สำหรับ centroid [row, col, v_row, v_col]
+    รองรับการเลี้ยวโค้งตามสนามลมหรือแรงโคริโอลิส (Non-linear curvature damping)
+    """
+
+    def __init__(self, r0: float, c0: float, q_pos: float = 0.5, r_pos: float = 1.0):
+        self.q = float(q_pos)
+        self.r = float(r_pos)
+        self.x = np.array([r0, c0, 0.0, 0.0], dtype=float)
+        self.P = np.diag([r_pos, r_pos, 10.0, 10.0]).astype(float)
+
+    def predict(self, dt: float) -> tuple[np.ndarray, np.ndarray]:
+        # Transition matrix พร้อม damping เล็กน้อยเพื่อเสถียรภาพ
+        F = np.array([
+            [1.0, 0.0, dt, 0.0],
+            [0.0, 1.0, 0.0, dt],
+            [0.0, 0.0, 0.98, 0.0],
+            [0.0, 0.0, 0.0, 0.98],
+        ])
+        Q = np.diag([self.q * dt**2 / 2, self.q * dt**2 / 2, self.q * dt, self.q * dt])
+        return F @ self.x, F @ self.P @ F.T + Q
+
+    def update(self, r_meas: float, c_meas: float, dt: float) -> None:
+        x_pred, P_pred = self.predict(dt)
+        H = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]])
+        R = np.diag([self.r, self.r])
+        S = H @ P_pred @ H.T + R
+        K = P_pred @ H.T @ np.linalg.inv(S)
+        z = np.array([r_meas, c_meas])
+        self.x = x_pred + K @ (z - H @ x_pred)
+        self.P = P_pred - K @ H @ P_pred
+
+    @property
+    def pos(self) -> tuple[float, float]:
+        return float(self.x[0]), float(self.x[1])
+
+    @property
+    def vel(self) -> tuple[float, float]:
+        return float(self.x[2]), float(self.x[3])
+
+
+# =====================================================================
 # โครงสร้างข้อมูลของ track
 # =====================================================================
 @dataclass
@@ -84,6 +129,7 @@ class Track:
     obj: DetectedObject
     kf_bt: KalmanCV
     kf_area: KalmanCV
+    kf_pos: KinematicEKF | None = None
     parent_id: str | None = None
     last_time: datetime | None = None
     n_scans: int = 1
@@ -136,10 +182,14 @@ class Tracker:
     def _new_track(self, obj: DetectedObject, time: datetime, parent: str | None = None) -> Track:
         k = self.cfg["kalman"]
         tid = f"obj_{time:%Y%m%d_%H%M}_{next(self._counter):05d}"
+        r0, c0 = obj.centroid_rc
+        q_pos = float(k.get("q_pos", 0.5))
+        r_pos = float(k.get("r_pos", 1.0))
         t = Track(
             track_id=tid, birth_time=time, last_time=time, obj=obj, parent_id=parent,
             kf_bt=KalmanCV(obj.cold_mean_bt, k["q_bt"], k["r_bt"]),
             kf_area=KalmanCV(np.log(max(obj.area_km2, 1e-3)), k["q_area"], k["r_area"], p0_rate=0.25),
+            kf_pos=KinematicEKF(r0, c0, q_pos=q_pos, r_pos=r_pos),
             rows=obj.rows, cols=obj.cols,
         )
         self._after_observe(t, obj, time)
@@ -194,6 +244,23 @@ class Tracker:
         if P and K:
             ages = np.array([min(t.age_min / 60.0, 1.0) for t in prev])
             cost = 1.0 - overlap - c["age_bonus"] * ages[:, None]
+
+            # [Kinematic EKF distance penalty] ให้ความสำคัญกับตำแหน่งเชิงจลนศาสตร์
+            if c.get("use_kinematic_cost", True):
+                pred_pos = []
+                for t in prev:
+                    if getattr(t, "kf_pos", None) is not None:
+                        pred_pos.append(t.kf_pos.pos)
+                    else:
+                        pred_pos.append(t.obj.centroid_rc)
+                pred_pos = np.array(pred_pos)
+                obs_pos = np.array([o.centroid_rc for o in objs])
+                dr = pred_pos[:, None, 0] - obs_pos[None, :, 0]
+                dc = pred_pos[:, None, 1] - obs_pos[None, :, 1]
+                dist_px = np.hypot(dr, dc)
+                max_d = float(c.get("max_match_dist_px", 60.0))
+                cost += 0.20 * np.clip(dist_px / max_d, 0.0, 1.0)
+
             cost[overlap < c["min_overlap"]] = 1e6
             ri, ci = linear_sum_assignment(cost)
             for i, k in zip(ri, ci):
@@ -211,6 +278,10 @@ class Tracker:
             t.obj, t.rows, t.cols = o, o.rows, o.cols
             t.kf_bt.update(o.cold_mean_bt, dt_steps)
             t.kf_area.update(np.log(max(o.area_km2, 1e-3)), dt_steps)
+            if getattr(t, "kf_pos", None) is not None:
+                t.kf_pos.update(o.centroid_rc[0], o.centroid_rc[1], dt_steps)
+            else:
+                t.kf_pos = KinematicEKF(o.centroid_rc[0], o.centroid_rc[1])
             t.last_time, t.n_scans, t.missed = time, t.n_scans + 1, 0
             self._after_observe(t, o, time)
             observed.append(t)

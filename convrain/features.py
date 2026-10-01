@@ -133,6 +133,20 @@ def compute_features(track: Track, scan: Scan, motion: MotionField | None, cfg: 
         "n_scans": track.n_scans,
         "has_parent": float(track.parent_id is not None),
         "min_cold_bt_track": track.min_cold_bt,
+        # ---- [CST / Adler-Negri] แกนพาความร้อน & Parallax Ground Coordinates ----
+        "core_lat": getattr(obj, "core_lat", obj.lat),
+        "core_lon": getattr(obj, "core_lon", obj.lon),
+        "lat_pc": getattr(obj, "lat_pc", obj.lat),
+        "lon_pc": getattr(obj, "lon_pc", obj.lon),
+        "core_lat_pc": getattr(obj, "core_lat_pc", getattr(obj, "core_lat", obj.lat)),
+        "core_lon_pc": getattr(obj, "core_lon_pc", getattr(obj, "core_lon", obj.lon)),
+        "cth_km": getattr(obj, "cth_km", 0.0),
+        "parallax_shift_km": getattr(obj, "parallax_shift_km", 0.0),
+        # ---- จุลฟิสิกส์เมฆและสัญญาณพายุรุนแรง ----
+        "has_overshooting": float(getattr(obj, "has_overshooting", False)),
+        "ot_pixel_count": float(getattr(obj, "ot_pixel_count", 0)),
+        "core_thermal_depth": getattr(obj, "core_thermal_depth", 0.0),
+        "core_gradient_k_per_km": getattr(obj, "core_gradient_k_per_km", 0.0),
     }
 
     # ---- [ขั้น 4.2] แนวโน้มตามเวลา (Lagrangian) ----

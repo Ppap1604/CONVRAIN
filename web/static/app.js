@@ -1,13 +1,12 @@
 /**
  * CONVRAIN - Satellite Convective Rain Onset Nowcast Web Platform
- * Dual Mode: Modern Dark SpaceX / Tactical + EUMETSAT RDT-CW Light Mode
- * Features:
- *  - Dark Mode & Light Mode seamlessly switchable
- *  - Satellite Cloud Deck (soft, translucent grayscale clouds from satellite imagery)
- *  - RDT Convective Cell Framing (Developing, Active Rain, Decaying, Projected Landfall)
- *  - Sharp Motion Direction Vector Arrows & Trajectory Tracking
- *  - Real-time GPS & Map-Click Point Rain Onset Prediction (ETA Window)
- *  - 10-Minute Satellite Replay Timeline Player
+ * Modern 2026 Redesign:
+ *  - Unified Header & Telemetry
+ *  - Collapsible Glassmorphism Sidebar
+ *  - Floating Layer FABs & Collapsible Legend
+ *  - Level-of-Detail (LOD) Vector Rendering (clean nationwide overview)
+ *  - Seamless Satellite Cloud Shadows
+ *  - 2x2 Metrics Grid Point Nowcast
  */
 
 // Global State
@@ -24,13 +23,16 @@ let impactZonesLayer = null;
 let graticuleLayer = null;
 let userMarker = null;
 let interceptVectorLine = null;
+let referenceLayer = null;
 
-// Layer Visibility Toggles
+// Layer Visibility & Mode Toggles
 let showSatelliteClouds = true;
 let showTrajectories = true;
 let showImpactZones = true;
 let showFootprints = true;
 let showGraticule = true;
+let smoothMode = true; // Windy Organic Cloud Smoothing (Chaikin subdivision)
+let activeSelectedObjectId = null; // Currently inspected/clicked cell
 
 // Data State
 let allScans = [];
@@ -48,22 +50,29 @@ document.addEventListener('DOMContentLoaded', () => {
   loadScans();
 });
 
+// =====================================================================
 // 1. Initialize Map with Basemaps & Graticule
+// =====================================================================
 function initMap() {
   const mapElement = document.getElementById('map');
   if (!mapElement) return;
 
   map = L.map('map', {
-    center: [13.8, 100.8],
-    zoom: 8,
+    center: [14.8, 101.2],
+    zoom: 7,
     zoomControl: false,
     preferCanvas: true,
   });
 
-  // Custom Zoom Control (Top-Left under Menu)
+  // Custom Zoom Control (Top-Left)
   L.control.zoom({ position: 'topleft' }).addTo(map);
 
-  // Basemaps (Esri Dark Canvas, RDT Ocean, Satellite Imagery, OSM)
+  // Dedicated Top Labels Pane for Cities & Boundaries (Windy-style top labels)
+  map.createPane('labelsPane');
+  map.getPane('labelsPane').style.zIndex = 650;
+  map.getPane('labelsPane').style.pointerEvents = 'none';
+
+  // Basemaps (Esri Dark Canvas Base, RDT Ocean, Satellite, OSM)
   baseLayers.dark = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
     {
@@ -73,12 +82,21 @@ function initMap() {
     }
   );
 
+  referenceLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    {
+      pane: 'labelsPane',
+      maxZoom: 16,
+      attribution: '',
+    }
+  );
+
   baseLayers.rdt_ocean = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}',
     {
       className: 'rdt-ocean-tiles',
       maxZoom: 16,
-      attribution: '&copy; Esri &copy; GEBCO, NOAA, National Geographic',
+      attribution: '&copy; Esri &copy; GEBCO, NOAA',
     }
   );
 
@@ -98,8 +116,9 @@ function initMap() {
     }
   );
 
-  // Default: Dark Mode Basemap
+  // Default: Dark Mode Basemap + Top Reference Labels
   baseLayers.dark.addTo(map);
+  referenceLayer.addTo(map);
 
   // Dedicated Layer Groups
   footprintsLayer = L.geoJSON(null, {
@@ -122,25 +141,35 @@ function initMap() {
   map.on('click', (e) => {
     const lat = parseFloat(e.latlng.lat.toFixed(4));
     const lon = parseFloat(e.latlng.lng.toFixed(4));
+    activeSelectedObjectId = null;
     setUserLocation(lat, lon, true);
+    if (currentScanData) renderVectorLayersLOD(currentScanData);
   });
 
-  setTimeout(() => { if (map) map.invalidateSize(); }, 150);
+  // Level-of-Detail (LOD) update on zoom
+  map.on('zoomend', () => {
+    if (currentScanData) {
+      renderVectorLayersLOD(currentScanData);
+    }
+  });
+
+  setTimeout(() => { if (map) map.invalidateSize(); }, 200);
   setTimeout(() => { if (map) map.invalidateSize(); }, 600);
   window.addEventListener('resize', () => { if (map) map.invalidateSize(); });
 }
 
-// 2. Render Lat/Lon Graticule Grid (Adapts to Dark/Light theme)
+// =====================================================================
+// 2. Render Lat/Lon Graticule Grid
+// =====================================================================
 function renderLatLonGraticule() {
   graticuleLayer.clearLayers();
 
-  const lats = [11, 12, 13, 14, 15, 16, 17];
-  const lons = [97, 98, 99, 100, 101, 102, 103, 104, 105];
-  const lineColor = isDarkMode ? 'rgba(255, 255, 255, 0.13)' : 'rgba(0, 0, 0, 0.22)';
+  const lats = [10, 12, 14, 16, 18, 20];
+  const lons = [96, 98, 100, 102, 104, 106];
+  const lineColor = isDarkMode ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.16)';
 
   lats.forEach((lat) => {
-    // Horizontal latitude line
-    const line = L.polyline([[lat, 95], [lat, 107]], {
+    const line = L.polyline([[lat, 94], [lat, 108]], {
       color: lineColor,
       weight: 0.8,
       opacity: 0.8,
@@ -149,12 +178,11 @@ function renderLatLonGraticule() {
     });
     graticuleLayer.addLayer(line);
 
-    // Degree label along the left side
-    const lbl = L.marker([lat, 97.4], {
+    const lbl = L.marker([lat, 96.2], {
       icon: L.divIcon({
         className: 'graticule-label',
         html: `${lat}°N`,
-        iconSize: [40, 14],
+        iconSize: [35, 14],
       }),
       interactive: false,
     });
@@ -162,8 +190,7 @@ function renderLatLonGraticule() {
   });
 
   lons.forEach((lon) => {
-    // Vertical longitude line
-    const line = L.polyline([[9, lon], [19, lon]], {
+    const line = L.polyline([[8, lon], [21, lon]], {
       color: lineColor,
       weight: 0.8,
       opacity: 0.8,
@@ -172,12 +199,11 @@ function renderLatLonGraticule() {
     });
     graticuleLayer.addLayer(line);
 
-    // Degree label along the top
-    const lbl = L.marker([16.8, lon], {
+    const lbl = L.marker([18.5, lon], {
       icon: L.divIcon({
         className: 'graticule-label',
         html: `${lon}°E`,
-        iconSize: [40, 14],
+        iconSize: [35, 14],
       }),
       interactive: false,
     });
@@ -185,16 +211,26 @@ function renderLatLonGraticule() {
   });
 }
 
+// =====================================================================
 // 3. Setup UI Event Listeners
+// =====================================================================
 function setupEventListeners() {
-  // Menu toggle button
-  const menuBtn = document.getElementById('btn-rdt-menu');
-  const drawer = document.getElementById('rdt-drawer');
-  if (menuBtn && drawer) {
-    menuBtn.addEventListener('click', () => {
-      const isHidden = drawer.style.display === 'none';
-      drawer.style.display = isHidden ? 'flex' : 'none';
-      menuBtn.innerText = isHidden ? '∧ ย่อเมนู' : '∨ เมนู / Menu';
+  // Sidebar Toggle Buttons
+  const sidebar = document.getElementById('app-sidebar');
+  const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+  const btnCloseSidebar = document.getElementById('btn-close-sidebar');
+
+  if (btnToggleSidebar && sidebar) {
+    btnToggleSidebar.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      setTimeout(() => { if (map) map.invalidateSize(); }, 320);
+    });
+  }
+
+  if (btnCloseSidebar && sidebar) {
+    btnCloseSidebar.addEventListener('click', () => {
+      sidebar.classList.add('collapsed');
+      setTimeout(() => { if (map) map.invalidateSize(); }, 320);
     });
   }
 
@@ -233,7 +269,6 @@ function setupEventListeners() {
         if (themeIcon) themeIcon.innerText = '🌙';
         if (legendArrow) legendArrow.style.color = '#facc15';
 
-        // Switch to Dark Canvas if currently on RDT Ocean
         if (currentBase === 'rdt_ocean') {
           map.removeLayer(baseLayers.rdt_ocean);
           map.addLayer(baseLayers.dark);
@@ -246,7 +281,6 @@ function setupEventListeners() {
         if (themeIcon) themeIcon.innerText = '☀️';
         if (legendArrow) legendArrow.style.color = '#000000';
 
-        // Switch to RDT Ocean if currently on Dark Canvas
         if (currentBase === 'dark') {
           map.removeLayer(baseLayers.dark);
           map.addLayer(baseLayers.rdt_ocean);
@@ -256,13 +290,26 @@ function setupEventListeners() {
         }
       }
 
-      // Refresh Graticule and current scan visualization with new theme colors
       renderLatLonGraticule();
       if (currentScanData) renderScan(currentScanData);
     });
   }
 
-  // Satellite Clouds Toggle
+  // Smooth Organic Clouds Toggle (Windy Style vs Raw Contours)
+  const btnToggleSmooth = document.getElementById('toggle-smooth-clouds');
+  if (btnToggleSmooth) {
+    btnToggleSmooth.addEventListener('click', () => {
+      smoothMode = !smoothMode;
+      btnToggleSmooth.classList.toggle('active', smoothMode);
+      const lbl = btnToggleSmooth.querySelector('.layer-label');
+      if (lbl) lbl.innerText = smoothMode ? 'เมฆธรรมชาติ (Smooth)' : 'กรอบวิเคราะห์ (Raw)';
+      if (currentScanData) {
+        renderScan(currentScanData);
+      }
+    });
+  }
+
+  // Satellite Clouds FAB Toggle
   const btnToggleSatClouds = document.getElementById('toggle-sat-clouds');
   if (btnToggleSatClouds) {
     btnToggleSatClouds.addEventListener('click', () => {
@@ -283,7 +330,20 @@ function setupEventListeners() {
     });
   }
 
-  // Motion Vector Arrows Toggle
+  // Cloud Opacity Slider (Windy Style)
+  const sliderCloudOpacity = document.getElementById('slider-cloud-opacity');
+  const lblCloudOpacity = document.getElementById('lbl-cloud-opacity');
+  if (sliderCloudOpacity) {
+    sliderCloudOpacity.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (lblCloudOpacity) lblCloudOpacity.innerText = `${val}%`;
+      if (satelliteCloudOverlay) {
+        satelliteCloudOverlay.setOpacity(val / 100.0);
+      }
+    });
+  }
+
+  // Motion Vector Arrows FAB Toggle
   const btnToggleTraj = document.getElementById('toggle-trajectories');
   if (btnToggleTraj) {
     btnToggleTraj.addEventListener('click', () => {
@@ -294,7 +354,7 @@ function setupEventListeners() {
     });
   }
 
-  // Impact Zones Toggle
+  // Impact Zones FAB Toggle
   const btnToggleImpact = document.getElementById('toggle-impact-zones');
   if (btnToggleImpact) {
     btnToggleImpact.addEventListener('click', () => {
@@ -305,7 +365,7 @@ function setupEventListeners() {
     });
   }
 
-  // Footprint Frames Toggle
+  // Footprint Frames FAB Toggle
   const btnToggleFootprints = document.getElementById('toggle-footprints');
   if (btnToggleFootprints) {
     btnToggleFootprints.addEventListener('click', () => {
@@ -316,7 +376,7 @@ function setupEventListeners() {
     });
   }
 
-  // Graticule Toggle
+  // Graticule FAB Toggle
   const btnToggleGraticule = document.getElementById('toggle-graticule');
   if (btnToggleGraticule) {
     btnToggleGraticule.addEventListener('click', () => {
@@ -327,13 +387,14 @@ function setupEventListeners() {
     });
   }
 
-  // Basemap Selector
+  // Basemap Selector Button
   const btnToggleBasemap = document.getElementById('toggle-basemap');
   const baseLbl = document.getElementById('lbl-basemap');
   if (btnToggleBasemap) {
     btnToggleBasemap.addEventListener('click', () => {
       if (currentBase === 'dark') {
         map.removeLayer(baseLayers.dark);
+        if (referenceLayer && map.hasLayer(referenceLayer)) map.removeLayer(referenceLayer);
         map.addLayer(baseLayers.rdt_ocean);
         currentBase = 'rdt_ocean';
         if (baseLbl) baseLbl.innerText = 'RDT Ocean';
@@ -350,32 +411,46 @@ function setupEventListeners() {
       } else {
         map.removeLayer(baseLayers.osm);
         map.addLayer(baseLayers.dark);
+        if (referenceLayer && !map.hasLayer(referenceLayer)) map.addLayer(referenceLayer);
         currentBase = 'dark';
         if (baseLbl) baseLbl.innerText = 'Dark Canvas';
       }
     });
   }
 
-  // GPS Button
-  const gpsBtn = document.getElementById('btn-gps');
-  if (gpsBtn) gpsBtn.addEventListener('click', requestUserGPS);
-
-  // Check coordinates button
-  const checkBtn = document.getElementById('btn-check-coords');
-  if (checkBtn) {
-    checkBtn.addEventListener('click', () => {
-      const lat = parseFloat(document.getElementById('input-lat').value);
-      const lon = parseFloat(document.getElementById('input-lon').value);
-      if (!isNaN(lat) && !isNaN(lon)) {
-        setUserLocation(lat, lon, true);
-      } else {
-        alert('กรุณากรอกพิกัด Latitude และ Longitude ให้ถูกต้อง');
+  // Collapsible Legend Toggle
+  const btnToggleLegend = document.getElementById('btn-toggle-legend');
+  const legendPanel = document.getElementById('legend-panel');
+  const iconLegendCollapse = document.getElementById('icon-legend-collapse');
+  if (btnToggleLegend && legendPanel) {
+    btnToggleLegend.addEventListener('click', () => {
+      legendPanel.classList.toggle('collapsed');
+      if (iconLegendCollapse) {
+        iconLegendCollapse.innerText = legendPanel.classList.contains('collapsed') ? '+' : '−';
       }
     });
   }
 
-  // Preset location chips
-  document.querySelectorAll('.preset-item').forEach((item) => {
+  // GPS Geolocation Button
+  const btnGps = document.getElementById('btn-gps');
+  if (btnGps) {
+    btnGps.addEventListener('click', requestUserGPS);
+  }
+
+  // Coordinates Search Button
+  const btnCheckCoords = document.getElementById('btn-check-coords');
+  if (btnCheckCoords) {
+    btnCheckCoords.addEventListener('click', () => {
+      const lat = parseFloat(document.getElementById('input-lat').value);
+      const lon = parseFloat(document.getElementById('input-lon').value);
+      if (!isNaN(lat) && !isNaN(lon)) {
+        setUserLocation(lat, lon, true);
+      }
+    });
+  }
+
+  // Preset Location Chips
+  document.querySelectorAll('.preset-chip, .preset-item').forEach((item) => {
     item.addEventListener('click', () => {
       const lat = parseFloat(item.dataset.lat);
       const lon = parseFloat(item.dataset.lon);
@@ -383,7 +458,7 @@ function setupEventListeners() {
     });
   });
 
-  // Timeline Controls
+  // Timeline Playback Controls
   const playBtn = document.getElementById('btn-play');
   const prevBtn = document.getElementById('btn-prev');
   const nextBtn = document.getElementById('btn-next');
@@ -399,7 +474,9 @@ function setupEventListeners() {
   }
 }
 
+// =====================================================================
 // 4. GPS Geolocation
+// =====================================================================
 function requestUserGPS() {
   const statusLbl = document.getElementById('gps-status-lbl');
   if (!navigator.geolocation) {
@@ -425,21 +502,25 @@ function requestUserGPS() {
   );
 }
 
+// =====================================================================
 // 5. Set & Inspect Target Location
+// =====================================================================
 function setUserLocation(lat, lon, panTo = false) {
   activeUserCoord = { lat, lon };
 
-  document.getElementById('input-lat').value = lat;
-  document.getElementById('input-lon').value = lon;
+  const inputLat = document.getElementById('input-lat');
+  const inputLon = document.getElementById('input-lon');
+  if (inputLat) inputLat.value = lat;
+  if (inputLon) inputLon.value = lon;
 
-  // Open drawer if closed so user sees the forecast
-  const drawer = document.getElementById('rdt-drawer');
-  if (drawer && drawer.style.display === 'none') {
-    drawer.style.display = 'flex';
-    document.getElementById('btn-rdt-menu').innerText = '∧ ย่อเมนู';
+  // Open sidebar if collapsed so user sees the forecast card
+  const sidebar = document.getElementById('app-sidebar');
+  if (sidebar && sidebar.classList.contains('collapsed')) {
+    sidebar.classList.remove('collapsed');
+    setTimeout(() => { if (map) map.invalidateSize(); }, 320);
   }
 
-  // Red Target Crosshair Marker
+  // Crosshair Marker
   if (userMarker) {
     userMarker.setLatLng([lat, lon]);
   } else {
@@ -458,20 +539,22 @@ function setUserLocation(lat, lon, panTo = false) {
   }
 
   if (panTo) {
-    map.flyTo([lat, lon], Math.max(map.getZoom(), 9), { duration: 0.8 });
+    map.flyTo([lat, lon], Math.max(map.getZoom(), 8), { duration: 0.6 });
   }
 
   queryPointNowcast(lat, lon);
 }
 
+// =====================================================================
 // 6. Query Point Nowcast API
+// =====================================================================
 async function queryPointNowcast(lat, lon) {
   const resultCard = document.getElementById('rain-result-card');
   if (!resultCard) return;
 
   resultCard.style.display = 'block';
   resultCard.innerHTML = `
-    <div style="padding: 10px; color: var(--text-muted); font-size: 11px; text-align: center;">
+    <div style="padding: 16px; color: var(--text-muted); font-size: 11px; text-align: center;">
       กำลังวิเคราะห์สภาพฝน ณ พิกัด (${lat}, ${lon}) ...
     </div>
   `;
@@ -483,18 +566,24 @@ async function queryPointNowcast(lat, lon) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('API response failed');
     const data = await res.json();
+    if (data.target_object && data.target_object.object_id) {
+      activeSelectedObjectId = data.target_object.object_id;
+      if (currentScanData) renderVectorLayersLOD(currentScanData);
+    }
     renderPointNowcastResult(data);
   } catch (err) {
     console.error('Point Nowcast Error:', err);
     resultCard.innerHTML = `
-      <div style="padding: 10px; color: #f87171; font-size: 11px;">
-        เกิดข้อผิดพลาดในการคำนวณข้อมูล
+      <div style="padding: 12px; color: #f87171; font-size: 11px; background: rgba(239,68,68,0.1); border-radius: 8px;">
+        เกิดข้อผิดพลาดในการคำนวณข้อมูลพิกัด
       </div>
     `;
   }
 }
 
-// 7. Render Point Onset Alert Box
+// =====================================================================
+// 7. Render Point Onset Alert Box (Modern 2x2 Grid)
+// =====================================================================
 function renderPointNowcastResult(data) {
   const resultCard = document.getElementById('rain-result-card');
   if (!resultCard) return;
@@ -502,6 +591,7 @@ function renderPointNowcastResult(data) {
   const m = data.metrics || {};
   const alertLevel = data.alert_level || 'notice';
 
+  // Intercept line
   if (interceptVectorLine) {
     map.removeLayer(interceptVectorLine);
     interceptVectorLine = null;
@@ -538,7 +628,7 @@ function renderPointNowcastResult(data) {
     etaHtml = `~${m.eta_median_th}`;
   }
 
-  let rainRateHtml = m.rain_rate_mm_hr != null ? `${m.rain_rate_mm_hr} มม./ชม.` : 'ไม่มี';
+  let rainRateHtml = m.rain_rate_mm_hr != null ? `${m.rain_rate_mm_hr} มม./ชม.` : '0 มม./ชม.';
 
   resultCard.innerHTML = `
     <div class="rdt-alert-box">
@@ -548,27 +638,27 @@ function renderPointNowcastResult(data) {
       </div>
       <div class="alert-desc-text">${data.summary_th || ''}</div>
 
-      <div class="rdt-stats-table">
-        <div>
-          <div class="rdt-stat-lbl">เวลาเริ่มตก (ETA Window)</div>
-          <div class="rdt-stat-val" style="color: #facc15;">${etaHtml}</div>
+      <div class="metrics-grid-2x2">
+        <div class="metric-card">
+          <div class="metric-card-lbl">เวลาเริ่มตก (ETA Window)</div>
+          <div class="metric-card-val highlight-yellow">${etaHtml}</div>
         </div>
-        <div>
-          <div class="rdt-stat-lbl">อัตราฝนคาดการณ์</div>
-          <div class="rdt-stat-val">${rainRateHtml}</div>
+        <div class="metric-card">
+          <div class="metric-card-lbl">อัตราฝนคาดการณ์</div>
+          <div class="metric-card-val highlight-cyan">${rainRateHtml}</div>
         </div>
-        <div>
-          <div class="rdt-stat-lbl">โอกาสใน 30 นาที</div>
-          <div class="rdt-stat-val">${p30}%</div>
+        <div class="metric-card">
+          <div class="metric-card-lbl">โอกาสใน 30 นาที</div>
+          <div class="metric-card-val">${p30}%</div>
         </div>
-        <div>
-          <div class="rdt-stat-lbl">โอกาสใน 60 นาที</div>
-          <div class="rdt-stat-val">${p60}%</div>
+        <div class="metric-card">
+          <div class="metric-card-lbl">โอกาสใน 60 นาที</div>
+          <div class="metric-card-val">${p60}%</div>
         </div>
       </div>
 
       ${m.distance_km ? `
-        <div style="margin-top: 6px; font-size: 10.5px; color: var(--text-muted);">
+        <div class="cell-distance-note">
           กลุ่มเมฆห่างออกไป <strong>${m.distance_km} กม.</strong> (${m.cloud_direction_thai || ''}) ความเร็ว <strong>${m.cloud_speed_kmh || '-'} กม./ชม.</strong>
         </div>
       ` : ''}
@@ -576,18 +666,24 @@ function renderPointNowcastResult(data) {
   `;
 }
 
+// =====================================================================
+// 8. Update Dataset UI
+// =====================================================================
 function updateDatasetUI(datasetId) {
   const isReal = datasetId === 'real';
   const nameLbl = document.getElementById('dataset-name');
   const iconLbl = document.getElementById('dataset-icon');
   const badge = document.getElementById('dataset-badge');
   const sliderSub = document.getElementById('slider-sub-lbl');
+  const topbarSource = document.getElementById('topbar-source');
 
   if (nameLbl) nameLbl.innerText = isReal ? 'ข้อมูลจริง Himawari-9' : 'ข้อมูลจำลอง (Simulation)';
   if (iconLbl) iconLbl.innerText = isReal ? '🛰️' : '🧪';
   if (badge) {
-    badge.innerText = isReal ? 'REAL SATELLITE' : 'SIMULATION';
-    badge.style.background = isReal ? '#0284c7' : '#22c55e';
+    badge.innerText = isReal ? 'LIVE' : 'SIM';
+  }
+  if (topbarSource) {
+    topbarSource.innerText = isReal ? 'Himawari-9 AHI + Radar' : 'Simulation Replay';
   }
   if (sliderSub) {
     sliderSub.innerText = isReal
@@ -596,7 +692,9 @@ function updateDatasetUI(datasetId) {
   }
 }
 
-// 8. Load Scans List from API
+// =====================================================================
+// 9. Load Scans List from API
+// =====================================================================
 async function loadScans() {
   try {
     try {
@@ -616,18 +714,19 @@ async function loadScans() {
     slider.max = allScans.length - 1;
     slider.value = allScans.length - 1;
 
-    document.getElementById('slider-start-lbl').innerText = formatStampTime(allScans[0].stamp);
-    document.getElementById('slider-end-lbl').innerText = formatStampTime(allScans[allScans.length - 1].stamp);
+    document.getElementById('slider-start-lbl').innerText = `${allScans[0].stamp.slice(9, 11)}:${allScans[0].stamp.slice(11, 13)} UTC (${formatStampTime(allScans[0].stamp)})`;
+    document.getElementById('slider-end-lbl').innerText = `${allScans[allScans.length - 1].stamp.slice(9, 11)}:${allScans[allScans.length - 1].stamp.slice(11, 13)} UTC (${formatStampTime(allScans[allScans.length - 1].stamp)})`;
 
     await selectScanIndex(allScans.length - 1);
-    // Auto-analyze default point (กทม./สมุทรปราการ) on initial load
     setUserLocation(13.5407, 100.4041, false);
   } catch (err) {
     console.error('Failed to load scans:', err);
   }
 }
 
-// 9. Select Specific Scan
+// =====================================================================
+// 10. Select Specific Scan
+// =====================================================================
 async function selectScanIndex(index) {
   if (index < 0 || index >= allScans.length) return;
   currentScanIndex = index;
@@ -637,16 +736,23 @@ async function selectScanIndex(index) {
 
   const scan = allScans[index];
   
-  // Update Top Tab Title
-  const tabTitle = document.getElementById('rdt-product-title');
-  if (tabTitle) {
-    tabTitle.innerText = `RDT CONVRAIN [${scan.stamp}], Ech000H pour ${formatStampTime(scan.stamp)}`;
+  // Update Topbar Time
+  const topbarTime = document.getElementById('topbar-time');
+  if (topbarTime) {
+    topbarTime.innerText = `${formatStampTime(scan.stamp)} (${scan.stamp.slice(9, 11)}:${scan.stamp.slice(11, 13)} UTC)`;
   }
 
   try {
     const res = await fetch(`/api/scans/${scan.stamp}`);
     if (!res.ok) throw new Error('Scan fetch failed');
     currentScanData = await res.json();
+
+    // Update Topbar Cells Telemetry
+    const topbarCells = document.getElementById('topbar-cells');
+    if (topbarCells && currentScanData.summary) {
+      const s = currentScanData.summary;
+      topbarCells.innerText = `${s.total_objects.toLocaleString()} เซลล์ (ฝนตก ${s.raining_count}, ก่อตัว ${s.developing_count})`;
+    }
 
     renderScan(currentScanData);
 
@@ -658,36 +764,17 @@ async function selectScanIndex(index) {
   }
 }
 
-// 10. Master Render: Satellite Cloud Deck + Footprints + Motion Vectors
+// =====================================================================
+// 11. Master Render: Satellite Cloud Deck + LOD Vectors
+// =====================================================================
 function renderScan(data) {
-  const footprints = data.footprints;
-  const trajectories = data.trajectories || [];
-  const impactZones = data.impact_zones || null;
-
-  // Clear previous vector layers
-  footprintsLayer.clearLayers();
-  impactZonesLayer.clearLayers();
-  trajectoriesLayer.clearLayers();
-
-  // 1. Render Satellite Cloud Shadows Layer (เงาเมฆดาวเทียมจางๆ แบบในรูป)
+  // 1. Satellite Cloud Shadows (Offscreen Canvas)
   renderSatelliteCloudLayer(data);
 
-  // 2. Convective Cell Footprints (RDT Multi-layer Framing)
-  if (footprints && footprints.features) {
-    footprintsLayer.addData(footprints);
-  }
+  // 2. Convective Footprints + Impact Zones + Motion Vectors with LOD
+  renderVectorLayersLOD(data);
 
-  // 3. Projected Rain Landfall / Impact Zones (Dashed Red Polygons)
-  if (impactZones && impactZones.features) {
-    impactZonesLayer.addData(impactZones);
-  }
-
-  // 4. Sharp Motion Vector Arrows & Trailing Trajectory
-  trajectories.forEach((traj) => {
-    renderRdtMotionArrow(traj);
-  });
-
-  // Auto-center bounds on first load focused on Thailand
+  // Auto-center bounds once on initial load
   if (!hasInitializedBounds) {
     map.setView([14.8, 101.2], 7);
     hasInitializedBounds = true;
@@ -696,7 +783,164 @@ function renderScan(data) {
   if (map) map.invalidateSize();
 }
 
-// 11. Render Satellite Cloud Deck (เมฆทั้งหมดจากภาพถ่ายดาวเทียมเป็นเงาเทาๆจางๆ)
+// =====================================================================
+// Chaikin's Corner Cutting Algorithm for Natural Organic Cloud Contours
+// =====================================================================
+function chaikinSmoothRing(ring, iterations = 2) {
+  if (!ring || ring.length < 3) return ring;
+  let current = ring;
+  const isClosed = (
+    Math.abs(current[0][0] - current[current.length - 1][0]) < 1e-6 &&
+    Math.abs(current[0][1] - current[current.length - 1][1]) < 1e-6
+  );
+  let pts = isClosed ? current.slice(0, -1) : current.slice();
+  if (pts.length < 3) return ring;
+
+  for (let it = 0; it < iterations; it++) {
+    const smoothed = [];
+    const len = pts.length;
+    for (let i = 0; i < len; i++) {
+      const p0 = pts[i];
+      const p1 = pts[(i + 1) % len];
+      smoothed.push([
+        0.75 * p0[0] + 0.25 * p1[0],
+        0.75 * p0[1] + 0.25 * p1[1],
+      ]);
+      smoothed.push([
+        0.25 * p0[0] + 0.75 * p1[0],
+        0.25 * p0[1] + 0.75 * p1[1],
+      ]);
+    }
+    pts = smoothed;
+  }
+  if (isClosed) {
+    pts.push([pts[0][0], pts[0][1]]);
+  }
+  return pts;
+}
+
+function smoothGeometry(geom, iterations = 2) {
+  if (!geom || !geom.coordinates) return geom;
+  if (geom.type === 'Polygon') {
+    return {
+      type: 'Polygon',
+      coordinates: geom.coordinates.map((ring) => chaikinSmoothRing(ring, iterations)),
+    };
+  } else if (geom.type === 'MultiPolygon') {
+    return {
+      type: 'MultiPolygon',
+      coordinates: geom.coordinates.map((poly) =>
+        poly.map((ring) => chaikinSmoothRing(ring, iterations))
+      ),
+    };
+  }
+  return geom;
+}
+
+function smoothFeatureCollection(fc, iterations = 2) {
+  if (!fc || !fc.features) return fc;
+  return {
+    ...fc,
+    features: fc.features.map((feat) => {
+      if (!feat.geometry) return feat;
+      return {
+        ...feat,
+        geometry: smoothGeometry(feat.geometry, iterations),
+      };
+    }),
+  };
+}
+
+// =====================================================================
+// 12. Level-of-Detail (LOD) Vector Rendering (Clean, Organic, Non-Cluttered)
+// =====================================================================
+function renderVectorLayersLOD(data) {
+  if (!data) return;
+
+  footprintsLayer.clearLayers();
+  impactZonesLayer.clearLayers();
+  trajectoriesLayer.clearLayers();
+
+  const z = map ? map.getZoom() : 7;
+  let maxCells = 30; // Clean national overview at zoom <= 7
+  if (z >= 9) {
+    maxCells = 160; // Clean city/local zoom without lagging or drowning the map
+  } else if (z >= 8) {
+    maxCells = 65; // Regional overview
+  }
+
+  const allTrajectories = data.trajectories || [];
+  const trajectories = allTrajectories.slice(0, maxCells);
+  const activeIds = new Set(trajectories.map((t) => t.object_id));
+
+  // 1. Footprints (Convective Rain Cells)
+  if (data.footprints && data.footprints.features) {
+    let filteredFootprints = data.footprints.features;
+    if (maxCells < 9999) {
+      filteredFootprints = data.footprints.features.filter((f) => {
+        const oid = f.id || (f.properties && f.properties.object_id);
+        return activeIds.has(oid);
+      });
+      if (filteredFootprints.length < 15) {
+        filteredFootprints = data.footprints.features.slice(0, maxCells);
+      }
+    }
+
+    const processedFootprints = smoothMode
+      ? smoothFeatureCollection({ type: 'FeatureCollection', features: filteredFootprints }, 2)
+      : { type: 'FeatureCollection', features: filteredFootprints };
+
+    footprintsLayer.addData(processedFootprints);
+  }
+
+  // 2. Projected Landfall / Impact Zones (Clean, Focused, Not Tangled)
+  if (data.impact_zones && data.impact_zones.features) {
+    let allImpacts = data.impact_zones.features;
+    let filteredImpacts = [];
+
+    // Always show impact zone for the active selected cell
+    if (activeSelectedObjectId) {
+      const targetImpact = allImpacts.find(
+        (f) => (f.properties && f.properties.object_id) === activeSelectedObjectId
+      );
+      if (targetImpact) filteredImpacts.push(targetImpact);
+    }
+
+    // In smooth mode: only show impact zones for high-threat oncoming cells (max 6 total)
+    if (smoothMode) {
+      const highThreatImpacts = allImpacts.filter((f) => {
+        const p = f.properties || {};
+        const p30 = p.p_within_30min || 0;
+        const rr = p.rain_rate_mm_hr || 0;
+        return (p30 >= 0.70 || rr >= 8.0) && activeIds.has(p.object_id);
+      }).slice(0, 6);
+
+      highThreatImpacts.forEach((imp) => {
+        if (!filteredImpacts.some((existing) => existing.properties.object_id === imp.properties.object_id)) {
+          filteredImpacts.push(imp);
+        }
+      });
+    } else {
+      // Raw view: show up to 25
+      filteredImpacts = allImpacts.filter((f) => activeIds.has(f.properties && f.properties.object_id)).slice(0, 25);
+    }
+
+    const processedImpacts = smoothMode
+      ? smoothFeatureCollection({ type: 'FeatureCollection', features: filteredImpacts }, 2)
+      : { type: 'FeatureCollection', features: filteredImpacts };
+
+    impactZonesLayer.addData(processedImpacts);
+  }
+
+  // 3. Motion Vector Arrows
+  trajectories.forEach((traj) => {
+    renderRdtMotionArrow(traj);
+  });
+}
+
+// =====================================================================
+// 13. Render Satellite Cloud Deck (Seamless Organic Translucent Shadows)
+// =====================================================================
 function renderSatelliteCloudLayer(scanData) {
   if (!showSatelliteClouds) {
     if (satelliteCloudOverlay && map.hasLayer(satelliteCloudOverlay)) {
@@ -705,12 +949,10 @@ function renderSatelliteCloudLayer(scanData) {
     return;
   }
 
-  // Full extent bounding box covering Thailand & surrounding seas
   const minLat = 4.0, maxLat = 22.0;
   const minLon = 93.0, maxLon = 110.0;
   const bounds = [[minLat, minLon], [maxLat, maxLon]];
 
-  // 1024x1024 High-Resolution Offscreen Canvas
   const canvas = document.createElement('canvas');
   canvas.width = 1024;
   canvas.height = 1024;
@@ -724,103 +966,125 @@ function renderSatelliteCloudLayer(scanData) {
   }
 
   const isDark = isDarkMode;
-
-  // Draw convective cloud canopies (core + spreading anvil canopy blown downwind)
   const allObjects = (scanData && scanData.doc && scanData.doc.objects) || [];
-  // จัดลำดับยอดเมฆสูงและเย็นที่สุด เพื่อวาดรัศมีเงาเมฆฟุ้ง 200 เซลล์หลักอย่างรวดเร็ว
+  
+  // Sort by highest & coldest cloud tops
   const objects = [...allObjects].sort((a, b) => {
     const ha = (a.cloud_top && a.cloud_top.cloud_top_height_km) || 0;
     const hb = (b.cloud_top && b.cloud_top.cloud_top_height_km) || 0;
     return hb - ha;
-  }).slice(0, 200);
+  }).slice(0, 140);
 
+  // 1. Draw Organic Footprint Envelopes (The actual cloud body from smoothed polygons)
+  const allFootprints = (scanData && scanData.footprints && scanData.footprints.features) || [];
+  const footprintMap = new Map();
+  allFootprints.forEach((f) => {
+    const oid = f.id || (f.properties && f.properties.object_id);
+    if (oid) footprintMap.set(oid, f);
+  });
+
+  ctx.save();
+  ctx.filter = 'blur(14px)';
   objects.forEach((obj) => {
-    const coords = obj.geometry.coordinates; // [lon, lat]
+    const oid = obj.object_id;
+    const feat = footprintMap.get(oid);
+    const cloudTop = obj.cloud_top || {};
+    const minBt = cloudTop.min_bt_10p4 || 250;
+    const coldness = Math.max(0, Math.min(1, (273 - minBt) / 60)); // 0 to 1
+
+    if (feat && feat.geometry && feat.geometry.coordinates) {
+      const rings = feat.geometry.coordinates;
+      rings.forEach((origRing) => {
+        const ring = smoothMode ? chaikinSmoothRing(origRing, 2) : origRing;
+        ctx.beginPath();
+        ring.forEach((pt, idx) => {
+          const px = toPx(pt[1], pt[0]);
+          if (idx === 0) ctx.moveTo(px.x, px.y);
+          else ctx.lineTo(px.x, px.y);
+        });
+        ctx.closePath();
+        const alpha = isDark ? (0.07 + coldness * 0.11) : (0.06 + coldness * 0.09);
+        ctx.fillStyle = isDark
+          ? `rgba(230, 242, 255, ${alpha})`
+          : `rgba(90, 110, 135, ${alpha})`;
+        ctx.fill();
+      });
+    }
+  });
+  ctx.restore();
+
+  // 2. Anvil Cirrus Outflow & Diffuse Cloud Halos (Wind-stretched organic plumes)
+  ctx.save();
+  ctx.filter = 'blur(20px)';
+  objects.slice(0, 75).forEach((obj) => {
+    const coords = obj.geometry.coordinates;
     const center = toPx(coords[1], coords[0]);
     const motion = obj.motion || { speed_ms: 6, direction_deg: 135 };
     const cloudTop = obj.cloud_top || {};
     const topHeight = cloudTop.cloud_top_height_km || 7.0;
     const minBt = cloudTop.min_bt_10p4 || 250;
+    const coldness = Math.max(0, Math.min(1, (273 - minBt) / 60));
 
-    // Density and size based on cloud height and coldness
-    const coldness = Math.max(0, Math.min(1, (273 - minBt) / 60)); // 0 (warm) to 1 (very cold ~213K)
-    const baseRadiusPx = 30 + (topHeight / 14) * 45; // 35 to 80 px
-    const anvilRadiusPx = baseRadiusPx * (1.8 + coldness * 1.3); // 70 to 200 px anvil
+    const baseRadiusPx = 16 + (topHeight / 14) * 26;
+    const anvilRadiusPx = baseRadiusPx * (1.3 + coldness * 1.0);
 
-    // Downwind displacement of the anvil plume
     const radDir = ((motion.direction_deg - 90) * Math.PI) / 180;
-    const anvilShift = (motion.speed_ms || 5) * 3.2;
+    const anvilShift = (motion.speed_ms || 5) * 2.0;
     const anvilCenterX = center.x + Math.cos(radDir) * anvilShift;
     const anvilCenterY = center.y + Math.sin(radDir) * anvilShift;
 
-    // Radial gradient for the soft satellite cloud canopy
     const cloudGrad = ctx.createRadialGradient(
-      center.x, center.y, baseRadiusPx * 0.15,
+      center.x, center.y, baseRadiusPx * 0.2,
       anvilCenterX, anvilCenterY, anvilRadiusPx
     );
 
+    const cAlpha = isDark ? (0.09 + coldness * 0.07) : (0.08 + coldness * 0.06);
     if (isDark) {
-      // Dark Mode: Soft luminous silver-gray satellite clouds
-      const cAlpha = 0.38 + coldness * 0.22;
-      cloudGrad.addColorStop(0.0, `rgba(240, 246, 255, ${cAlpha})`);
-      cloudGrad.addColorStop(0.25, `rgba(220, 232, 245, ${cAlpha * 0.75})`);
-      cloudGrad.addColorStop(0.55, `rgba(185, 205, 225, ${cAlpha * 0.40})`);
-      cloudGrad.addColorStop(0.82, `rgba(160, 185, 210, ${cAlpha * 0.15})`);
-      cloudGrad.addColorStop(1.0, 'rgba(150, 175, 200, 0.0)');
+      cloudGrad.addColorStop(0.0, `rgba(240, 248, 255, ${cAlpha})`);
+      cloudGrad.addColorStop(0.40, `rgba(210, 228, 248, ${cAlpha * 0.65})`);
+      cloudGrad.addColorStop(0.75, `rgba(170, 195, 225, ${cAlpha * 0.22})`);
+      cloudGrad.addColorStop(1.0, 'rgba(150, 180, 210, 0.0)');
     } else {
-      // Light Mode: Soft smoky slate-gray cloud shadows (matching reference photo)
-      const cAlpha = 0.36 + coldness * 0.22;
-      cloudGrad.addColorStop(0.0, `rgba(95, 110, 130, ${cAlpha})`);
-      cloudGrad.addColorStop(0.25, `rgba(115, 130, 150, ${cAlpha * 0.72})`);
-      cloudGrad.addColorStop(0.55, `rgba(140, 155, 175, ${cAlpha * 0.38})`);
-      cloudGrad.addColorStop(0.82, `rgba(160, 175, 195, ${cAlpha * 0.14})`);
-      cloudGrad.addColorStop(1.0, 'rgba(175, 190, 205, 0.0)');
+      cloudGrad.addColorStop(0.0, `rgba(80, 100, 125, ${cAlpha})`);
+      cloudGrad.addColorStop(0.40, `rgba(105, 125, 150, ${cAlpha * 0.65})`);
+      cloudGrad.addColorStop(0.75, `rgba(140, 160, 185, ${cAlpha * 0.22})`);
+      cloudGrad.addColorStop(1.0, 'rgba(165, 185, 205, 0.0)');
     }
 
-    ctx.save();
     ctx.fillStyle = cloudGrad;
     ctx.beginPath();
     ctx.arc(anvilCenterX, anvilCenterY, anvilRadiusPx, 0, Math.PI * 2);
-    ctx.filter = 'blur(18px)';
     ctx.fill();
-    ctx.restore();
-  });
-
-  // C. Draw footprint contours with soft feathered Gaussian blur
-  // This binds the dense cloud core directly to the actual satellite footprint shape
-  const allFootprints = (scanData && scanData.footprints && scanData.footprints.features) || [];
-  const footprints = allFootprints.slice(0, 200);
-  ctx.save();
-  ctx.filter = 'blur(12px)';
-  footprints.forEach((feat) => {
-    if (!feat.geometry || !feat.geometry.coordinates) return;
-    const rings = feat.geometry.coordinates;
-    rings.forEach((ring) => {
-      ctx.beginPath();
-      ring.forEach((pt, idx) => {
-        const px = toPx(pt[1], pt[0]);
-        if (idx === 0) ctx.moveTo(px.x, px.y);
-        else ctx.lineTo(px.x, px.y);
-      });
-      ctx.closePath();
-      ctx.fillStyle = isDark ? 'rgba(235, 245, 255, 0.24)' : 'rgba(85, 100, 120, 0.26)';
-      ctx.fill();
-    });
   });
   ctx.restore();
 
-  // Convert to Data URL and update or create Leaflet ImageOverlay
+  // 3. Vignette Edge Feathering (Guarantees zero sharp rectangular boundaries at canvas edge)
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-in';
+  const edgeGradient = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, canvas.width * 0.36,
+    canvas.width / 2, canvas.height / 2, canvas.width * 0.50
+  );
+  edgeGradient.addColorStop(0.0, 'rgba(0, 0, 0, 1.0)');
+  edgeGradient.addColorStop(0.75, 'rgba(0, 0, 0, 0.85)');
+  edgeGradient.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+  ctx.fillStyle = edgeGradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
   const dataUrl = canvas.toDataURL('image/png');
+  const opacity = 0.30;
   if (satelliteCloudOverlay) {
     satelliteCloudOverlay.setUrl(dataUrl);
     satelliteCloudOverlay.setBounds(bounds);
+    satelliteCloudOverlay.setOpacity(opacity);
     if (!map.hasLayer(satelliteCloudOverlay)) {
       satelliteCloudOverlay.addTo(map);
       satelliteCloudOverlay.bringToBack();
     }
   } else {
     satelliteCloudOverlay = L.imageOverlay(dataUrl, bounds, {
-      opacity: 0.88,
+      opacity: opacity,
       zIndex: 5,
       interactive: false,
     }).addTo(map);
@@ -828,98 +1092,162 @@ function renderSatelliteCloudLayer(scanData) {
   }
 }
 
-// 12. Styling Footprints (RDT Convective Multi-Layer Frames)
+// =====================================================================
+// 14. Styling Footprints (Windy-Style Smooth Radar Contours)
+// =====================================================================
 function styleRdtFootprint(feature) {
   const oid = feature.id || (feature.properties ? feature.properties.object_id : null);
   let status = 'developing';
+  let rainRate = null;
 
   if (currentScanData && currentScanData.doc && currentScanData.doc.objects) {
     const found = currentScanData.doc.objects.find((o) => o.object_id === oid);
-    if (found) status = found.status;
+    if (found) {
+      status = found.status;
+      if (found.intensity) rainRate = found.intensity.rain_rate_mm_hr;
+    }
   }
 
+  const isSelected = activeSelectedObjectId === oid;
+
   if (status === 'raining' || status === 'peak') {
-    // Mature / Raining: Bold Red outline with Cyan core fill
+    let strokeColor = '#ef4444';
+    let fillColor = '#06b6d4';
+    if (rainRate != null) {
+      if (rainRate >= 15.0) { strokeColor = '#ec4899'; fillColor = '#db2777'; }
+      else if (rainRate >= 5.0) { strokeColor = '#f97316'; fillColor = '#ea580c'; }
+      else if (rainRate >= 2.0) { strokeColor = '#eab308'; fillColor = '#06b6d4'; }
+    }
+
     return {
-      color: '#ef4444',
-      weight: 2.2,
-      opacity: 0.95,
-      fillColor: '#22d3ee',
-      fillOpacity: isDarkMode ? 0.35 : 0.55,
+      color: isSelected ? '#38bdf8' : strokeColor,
+      weight: isSelected ? 2.6 : (smoothMode ? 1.3 : 1.6),
+      opacity: isSelected ? 1.0 : (smoothMode ? 0.85 : 0.92),
+      fillColor: fillColor,
+      fillOpacity: isSelected ? 0.28 : (isDarkMode ? 0.12 : 0.15),
+      lineJoin: 'round',
+      lineCap: 'round',
+      className: isSelected ? 'rdt-footprint-selected' : 'rdt-footprint-smooth',
     };
   } else if (status === 'developing') {
-    // Developing: Bright Magenta/Fuchsia outline with Yellow core fill
     return {
-      color: '#e879f9',
-      weight: 2.2,
-      opacity: 0.95,
-      fillColor: '#fde047',
-      fillOpacity: isDarkMode ? 0.35 : 0.50,
+      color: isSelected ? '#38bdf8' : '#f59e0b',
+      weight: isSelected ? 2.4 : (smoothMode ? 1.1 : 1.4),
+      opacity: isSelected ? 1.0 : (smoothMode ? 0.75 : 0.88),
+      fillColor: '#facc15',
+      fillOpacity: isSelected ? 0.20 : (isDarkMode ? 0.05 : 0.08),
+      lineJoin: 'round',
+      lineCap: 'round',
+      className: isSelected ? 'rdt-footprint-selected' : 'rdt-footprint-smooth',
     };
   } else {
-    // Decaying / Dissipated: Dashed Blue outline
     return {
-      color: '#3b82f6',
-      weight: 1.8,
-      dashArray: '5, 5',
-      opacity: 0.85,
+      color: '#60a5fa',
+      weight: 1.0,
+      dashArray: '3, 4',
+      opacity: 0.50,
       fillColor: '#93c5fd',
-      fillOpacity: isDarkMode ? 0.18 : 0.25,
+      fillOpacity: 0.02,
+      lineJoin: 'round',
+      lineCap: 'round',
     };
   }
 }
 
 function onEachFootprintFeature(feature, layer) {
-  const oid = feature.id || (feature.properties ? feature.properties.object_id : null);
-  if (!oid) return;
+  const p = feature.properties || {};
+  const oid = feature.id || p.object_id;
 
-  layer.on('click', () => {
-    if (currentScanData && currentScanData.doc) {
-      const obj = currentScanData.doc.objects.find((o) => o.object_id === oid);
-      if (obj) focusObject(obj);
+  layer.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
+    activeSelectedObjectId = oid;
+    let obj = null;
+    if (currentScanData && currentScanData.doc && currentScanData.doc.objects) {
+      obj = currentScanData.doc.objects.find((o) => o.object_id === oid);
     }
+    if (obj && obj.geometry && obj.geometry.coordinates) {
+      setUserLocation(obj.geometry.coordinates[1], obj.geometry.coordinates[0], false);
+    }
+    if (currentScanData) renderVectorLayersLOD(currentScanData);
   });
 
-  layer.bindTooltip(`RDT Cell: ${oid}`, { sticky: true, className: 'rdt-tooltip' });
+  let obj = null;
+  if (currentScanData && currentScanData.doc && currentScanData.doc.objects) {
+    obj = currentScanData.doc.objects.find((o) => o.object_id === oid);
+  }
+
+  const status = obj ? obj.status : (p.status || 'unknown');
+  const statusLabel =
+    status === 'raining' || status === 'peak' ? 'ฝนตกแล้ว (Mature Rain)'
+    : status === 'developing' ? 'กำลังพัฒนาตัว (Developing)'
+    : 'กำลังสลายตัว (Decaying)';
+
+  const rainRate = (obj && obj.intensity && obj.intensity.rain_rate_mm_hr != null)
+    ? `${obj.intensity.rain_rate_mm_hr} มม./ชม.` : '-';
+  const p30 = (obj && obj.onset && obj.onset.p_within_30min != null)
+    ? `${Math.round(obj.onset.p_within_30min * 100)}%` : '-';
+  const topH = (obj && obj.cloud_top && obj.cloud_top.cloud_top_height_km)
+    ? `${obj.cloud_top.cloud_top_height_km} กม.` : '-';
+  const speed = (obj && obj.motion && obj.motion.speed_ms)
+    ? `${(obj.motion.speed_ms * 3.6).toFixed(1)} กม./ชม.` : '-';
+
+  layer.bindPopup(`
+    <div style="font-size: 11px; line-height: 1.6; min-width: 170px;">
+      <div style="font-weight: 800; border-bottom: 1px solid var(--border-prominent); padding-bottom: 3px; margin-bottom: 5px; color: var(--accent-cyan);">
+        ${oid}
+      </div>
+      <div><strong>สถานะ:</strong> ${statusLabel}</div>
+      <div><strong>ความสูงยอดเมฆ:</strong> ${topH}</div>
+      <div><strong>ความเร็วลมเคลื่อนตัว:</strong> ${speed}</div>
+      <div><strong>อัตราฝน:</strong> ${rainRate}</div>
+      <div><strong>โอกาสตก 30 นาที:</strong> ${p30}</div>
+    </div>
+  `);
 }
 
-// 13. Styling Projected Landfall (Dashed Red Outline)
+// =====================================================================
+// 15. Styling Impact Zones (Projected Rain Landfall)
+// =====================================================================
 function styleRdtImpactZone(feature) {
+  const p = feature.properties || {};
+  const isSelected = activeSelectedObjectId === p.object_id;
+
   return {
-    color: '#ef4444',
-    weight: 1.8,
-    dashArray: '4, 4',
-    opacity: 0.9,
+    color: isSelected ? '#ff4757' : '#f87171',
+    weight: isSelected ? 2.0 : 1.2,
+    dashArray: isSelected ? '5, 3' : '4, 4',
+    opacity: isSelected ? 0.95 : 0.65,
     fillColor: '#fca5a5',
-    fillOpacity: isDarkMode ? 0.20 : 0.30,
+    fillOpacity: isSelected ? 0.14 : 0.04,
+    lineJoin: 'round',
+    lineCap: 'round',
   };
 }
 
 function onEachImpactFeature(feature, layer) {
   const p = feature.properties || {};
-  const popup = `
-    <div style="font-size: 11px; padding: 2px;">
-      <div style="font-weight: 700; color: #ef4444; font-size: 12px; margin-bottom: 4px;">
-        🎯 จุดคาดการณ์ฝนเริ่มตก (Projected Impact)
+  layer.bindPopup(`
+    <div style="font-size: 11px; line-height: 1.5;">
+      <div style="font-weight: 800; color: #f87171; border-bottom: 1px solid var(--border-prominent); padding-bottom: 3px; margin-bottom: 4px;">
+        🎯 พื้นที่คาดการณ์ฝนตก (~${p.project_min || 30} นาทีข้างหน้า)
       </div>
-      <div><strong>Cell ID:</strong> ${p.object_id}</div>
-      <div><strong>เวลาคาดการณ์ (ETA):</strong> <span style="font-weight: 700;">${p.eta_th}</span></div>
-      ${p.eta_window_th ? `<div><strong>ช่วงเวลา (Window):</strong> ${p.eta_window_th[0]} – ${p.eta_window_th[1]}</div>` : ''}
-      <div><strong>ความเร็วเคลื่อนตัว:</strong> ${p.speed_kmh} กม./ชม. (ทิศ ${p.direction_deg}°)</div>
-      ${p.rain_rate_mm_hr ? `<div><strong>อัตราฝนคาดการณ์:</strong> ${p.rain_rate_mm_hr} มม./ชม.</div>` : ''}
+      <div><strong>เซลล์ต้นทาง:</strong> ${p.object_id}</div>
+      <div><strong>เวลาคาดการณ์ (ETA):</strong> ${p.eta_th || '-'}</div>
+      <div><strong>ความเร็วเคลื่อนที่:</strong> ${p.speed_kmh || '-'} กม./ชม.</div>
     </div>
-  `;
-  layer.bindPopup(popup);
+  `);
 }
 
-// 14. Motion Vector Arrow (Adapts dynamically to Dark/Light Mode)
+// =====================================================================
+// 16. Motion Vector Arrow
+// =====================================================================
 function renderRdtMotionArrow(traj) {
   const c_lon = traj.origin[0];
   const c_lat = traj.origin[1];
   const dir = traj.direction_deg;
   const speed = traj.speed_ms;
 
-  // Vector length proportional to speed (~30 min displacement)
+  // Displacement over 30 min along motion bearing dir
   const dist_m = speed * 1800;
   const d_lat = (dist_m * Math.cos((dir * Math.PI) / 180)) / 111139.0;
   const d_lon = (dist_m * Math.sin((dir * Math.PI) / 180)) / (111139.0 * Math.cos((c_lat * Math.PI) / 180));
@@ -927,88 +1255,81 @@ function renderRdtMotionArrow(traj) {
   const end_lat = c_lat + d_lat;
   const end_lon = c_lon + d_lon;
 
-  // Arrow shaft & head colors:
-  // In Dark Mode: Luminous amber/yellow (#facc15) with black border for high-contrast tactical readability
-  // In Light Mode: Sharp solid black (#000000) with white border
   const arrowShaftColor = isDarkMode ? '#facc15' : '#000000';
   const arrowFill = isDarkMode ? '#fde047' : '#000000';
   const arrowStroke = isDarkMode ? '#000000' : '#ffffff';
 
-  // Arrow shaft
+  // 1. Arrow Shaft Polyline (from cell center to 30-min forecast position)
   const arrowShaft = L.polyline([[c_lat, c_lon], [end_lat, end_lon]], {
     color: arrowShaftColor,
-    weight: isDarkMode ? 2.4 : 2.2,
-    opacity: 1,
+    weight: isDarkMode ? 2.2 : 2.0,
+    opacity: 0.95,
   });
   trajectoriesLayer.addLayer(arrowShaft);
 
-  // Sharp arrowhead marker
+  // 2. Sharp Arrowhead Marker (Base SVG points North (0°), perfectly aligned with bearing)
   const arrowIcon = L.divIcon({
-    className: 'black-arrow-icon',
+    className: 'rdt-arrow-marker',
     html: `
-      <div style="transform: rotate(${dir}deg); transform-origin: 0px 0px;">
-        <svg width="20" height="20" viewBox="0 0 20 20" style="margin-left: -5px; margin-top: -10px; overflow: visible;">
-          <polygon points="0,3 17,10 0,17 4,10" fill="${arrowFill}" stroke="${arrowStroke}" stroke-width="1.2" stroke-linejoin="round"/>
+      <div style="width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; transform: rotate(${dir}deg); transform-origin: 10px 10px;">
+        <svg width="20" height="20" viewBox="0 0 20 20" style="overflow: visible;">
+          <polygon points="10,2 17,17 10,13 3,17" fill="${arrowFill}" stroke="${arrowStroke}" stroke-width="1.2" stroke-linejoin="round"/>
         </svg>
       </div>
     `,
-    iconSize: [0, 0],
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
   const arrowHead = L.marker([end_lat, end_lon], { icon: arrowIcon });
   trajectoriesLayer.addLayer(arrowHead);
-
-  // Trailing yellow trajectory track
-  if (traj.path && traj.path.length > 2) {
-    const yellowTrack = L.polyline(traj.path.map((p) => [p[1], p[0]]), {
-      color: '#eab308',
-      weight: 1.5,
-      opacity: 0.85,
-    });
-    trajectoriesLayer.addLayer(yellowTrack);
-  }
 }
 
-// 15. Focus Object
-function focusObject(obj) {
-  const coords = obj.geometry.coordinates;
-  map.flyTo([coords[1], coords[0]], 10, { duration: 0.6 });
-}
-
-// 16. Timeline Controls
+// =====================================================================
+// 17. Timeline Playback Controls
+// =====================================================================
 function togglePlay() {
+  isPlaying = !isPlaying;
   const playBtn = document.getElementById('btn-play');
+  if (playBtn) playBtn.innerText = isPlaying ? '⏸' : '▶';
+
   if (isPlaying) {
-    clearInterval(playInterval);
-    isPlaying = false;
-    playBtn.innerText = '▶';
-  } else {
-    isPlaying = true;
-    playBtn.innerText = '❚❚';
     playInterval = setInterval(() => {
-      let next = currentScanIndex + 1;
-      if (next >= allScans.length) next = 0;
-      selectScanIndex(next);
-    }, 1500);
+      let nextIdx = currentScanIndex + 1;
+      if (nextIdx >= allScans.length) nextIdx = 0;
+      selectScanIndex(nextIdx);
+    }, 1800);
+  } else {
+    if (playInterval) {
+      clearInterval(playInterval);
+      playInterval = null;
+    }
   }
 }
 
-function stepScan(direction) {
-  let next = currentScanIndex + direction;
-  if (next >= 0 && next < allScans.length) {
-    selectScanIndex(next);
-  }
+function stepScan(delta) {
+  if (isPlaying) togglePlay();
+  let nextIdx = currentScanIndex + delta;
+  if (nextIdx < 0) nextIdx = 0;
+  if (nextIdx >= allScans.length) nextIdx = allScans.length - 1;
+  selectScanIndex(nextIdx);
 }
 
-// Helpers
+// =====================================================================
+// 18. Helper: Format Thai Time
+// =====================================================================
 function formatStampTime(stamp) {
-  if (!stamp) return '-';
-  const m = stamp.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})Z/);
-  if (m) {
-    const utcHours = parseInt(m[4], 10);
-    const mins = m[5];
-    const thHours = (utcHours + 7) % 24;
-    const thHStr = thHours < 10 ? '0' + thHours : thHours;
-    return `${thHStr}:${mins} น. (${m[4]}:${mins}UTC)`;
+  try {
+    const year = stamp.slice(0, 4);
+    const month = stamp.slice(4, 6);
+    const day = stamp.slice(6, 8);
+    const hour = stamp.slice(9, 11);
+    const min = stamp.slice(11, 13);
+    const utcDate = new Date(Date.UTC(+year, +month - 1, +day, +hour, +min));
+    const thaiDate = new Date(utcDate.getTime() + 7 * 3600 * 1000);
+    const thH = String(thaiDate.getUTCHours()).padStart(2, '0');
+    const thM = String(thaiDate.getUTCMinutes()).padStart(2, '0');
+    return `${thH}:${thM} น.`;
+  } catch (e) {
+    return stamp;
   }
-  return stamp;
 }

@@ -31,27 +31,37 @@ detect:
   drop_edge_objects: true   # ตัด object ที่แตะขอบโดเมน
   thin_cirrus_btd_sw: 3.0   # BTD(10.4-12.4) สูงกว่านี้ + BT เย็น = cirrus บาง
   thin_cirrus_bt_max: 253.0 # ใช้เกณฑ์ cirrus เฉพาะ pixel ที่เย็นกว่าค่านี้
+  refine_contours: false    # Level Set Active Contours ปรับขอบเขตให้ยึดติด thermal gradient สูงสุด
+  active_contour_iter: 5    # จำนวนรอบ Level Set
 
 # ---------- ขั้น 2: Motion field (หัวข้อ 5) ----------
 motion:
-  method: dis               # dis = DIS optical flow (OpenCV), phase = global shift สำรอง
+  method: dis               # dis = DIS optical flow, mcc = Maximum Cross-Correlation (แม่นยำสูงสุด), phase = global shift
   downsample: 2             # ลดความละเอียดก่อนคำนวณ flow
   bt_clip: [190.0, 300.0]   # ช่วง BT ที่แปลงเป็นภาพ 8-bit
   smooth_sigma_px: 2.0      # Gaussian smoothing ของ field (หน่วย pixel ของภาพที่ downsample)
   max_speed_ms: 40.0        # QC: ความเร็วสูงกว่านี้ถือว่าผิด
   temporal_alpha: 0.5       # น้ำหนัก field ใหม่ใน exponential smoothing ข้ามเวลา
   pixel_size_km: 2.0        # ขนาด pixel โดยประมาณ ใช้แปลง pixel/scan → m/s (คำนวณจริงจาก lat/lon ถ้ามี)
+  mcc_tile_size: 24         # ขนาด patch สำหรับ MCC
+  mcc_stride: 12            # ก้าวกระโดดค้นหา
+  mcc_search_pad: 14        # รัศมีพื้นที่ค้นหา
+  mcc_min_corr: 0.35        # ค่า correlation ขั้นต่ำที่ยอมรับ
 
 # ---------- ขั้น 3: Tracking (หัวข้อ 6) ----------
 track:
   min_overlap: 0.3          # overlap ratio ขั้นต่ำที่ถือว่าเป็นก้อนเดียวกัน
   max_missed_scans: 1       # เก็บ track ที่หายไปได้กี่ scan ก่อนปิด
   age_bonus: 0.05           # ตอนจับคู่ ให้ track ที่อายุมากกว่าได้เปรียบเล็กน้อย (กรณี merge)
+  use_kinematic_cost: true  # คำนวณโทษระยะทางจาก Kinematic EKF ช่วยจับคู่ก้อนเมฆ
+  max_match_dist_px: 60.0   # ระยะทางสูงสุดในการจับคู่
   kalman:
     q_bt: 1.0               # process noise ของ min BT (K^2 ต่อ scan)
     r_bt: 1.0               # measurement noise ของ min BT (K^2)
     q_area: 0.02            # process noise ของ log(area)
     r_area: 0.05            # measurement noise ของ log(area)
+    q_pos: 0.5              # process noise ของตำแหน่ง [row, col]
+    r_pos: 1.0              # measurement noise ของตำแหน่ง [row, col]
 
 # ---------- ขั้น 4: Features (หัวข้อ 7) ----------
 features:

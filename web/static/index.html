@@ -3,160 +3,248 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CONVRAIN - Convective Cloud Nowcast Platform</title>
+  <title>CONVRAIN — Convective Rain Nowcast Platform</title>
 
   <!-- Local Leaflet Vendor Assets -->
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
   
-  <!-- Modern Dark & RDT Meteorological Style CSS -->
+  <!-- Windy-Inspired Meteorological Design System -->
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="dark-theme">
 
-  <!-- Top Left Product Tab (EUMETSAT / SpaceX Hybrid) -->
-  <div class="rdt-product-tab">
-    <div class="rdt-tab-title">
-      <span class="rdt-badge-live" id="dataset-badge" style="background: #0284c7;">REAL SATELLITE</span>
-      <span id="rdt-product-title">RDT CONVRAIN [2026/09/28 08:00], Ech000H pour 15:00 น. (08:00UTC)</span>
-    </div>
-    <span class="rdt-tab-close" onclick="this.parentElement.style.display='none'">✕</span>
-  </div>
-
-  <!-- Menu Toggle Button (Opens Inspector Drawer) -->
-  <button id="btn-rdt-menu" class="rdt-menu-btn">∨ เมนู / Menu</button>
-
-  <!-- Top Right Layer Toolbar HUD -->
-  <div class="rdt-layer-toolbar">
-    <button id="btn-dataset-switch" class="rdt-btn-layer" style="border-color: #38bdf8; color: #38bdf8;" title="คลิกเพื่อสลับระหว่างข้อมูลจริง Himawari-9 และข้อมูลทดสอบ">
-      <span id="dataset-icon">🛰️</span>
-      <span id="dataset-name">ข้อมูลจริง Himawari-9</span>
-    </button>
-
-    <button id="toggle-theme" class="rdt-btn-layer theme-btn" title="สลับโหมดมืด (Dark Mode) และโหมดสว่าง RDT Classic">
-      <span id="icon-theme">🌙</span>
-      <span id="lbl-theme">Dark Mode</span>
-    </button>
-
-    <button id="toggle-sat-clouds" class="rdt-btn-layer active" title="เปิด/ปิด เงาเมฆดาวเทียมทั้งหมด (Satellite Cloud Deck)">
-      <span>☁️</span>
-      <span>เงาเมฆดาวเทียม (Sat Clouds)</span>
-    </button>
-
-    <button id="toggle-trajectories" class="rdt-btn-layer active" title="เปิด/ปิด เวกเตอร์ลูกศรทิศทางการเคลื่อนที่">
-      <span>➔</span>
-      <span>ลูกศรทิศทาง (Motion)</span>
-    </button>
-
-    <button id="toggle-impact-zones" class="rdt-btn-layer active" title="เปิด/ปิด พื้นที่และจุดคาดการณ์ฝนตก">
-      <span>🎯</span>
-      <span>จุดคาดการณ์ตก (Impacts)</span>
-    </button>
-
-    <button id="toggle-footprints" class="rdt-btn-layer active" title="เปิด/ปิด กรอบขอบเขตกลุ่มเมฆ RDT">
-      <span>🛡️</span>
-      <span>กรอบขอบเขตเมฆ (Frames)</span>
-    </button>
-
-    <button id="toggle-graticule" class="rdt-btn-layer active" title="เปิด/ปิด เส้นพิกัดภูมิศาสตร์ Lat/Lon">
-      <span>🌐</span>
-      <span>เส้นพิกัด (Graticule)</span>
-    </button>
-
-    <button id="toggle-basemap" class="rdt-btn-layer" title="สลับแผนที่พื้นหลัง">
-      <span>🗺️</span>
-      <span id="lbl-basemap">Dark Canvas</span>
-    </button>
-  </div>
-
-  <!-- Collapsible Left Drawer: GPS & Point Nowcast Inspector -->
-  <div id="rdt-drawer" class="rdt-inspector-drawer">
-    <div class="rdt-drawer-header">
-      <span>📍 วิเคราะห์ฝน ณ พิกัดเป้าหมาย (Point Nowcast)</span>
-      <span id="gps-status-lbl" style="font-size: 10px; color: var(--text-muted); font-weight: normal;">คลิกบนแผนที่ได้</span>
+  <!-- =================================================================
+       Top Navigation & Windy-Style Header Bar
+  ================================================================== -->
+  <header class="app-topbar">
+    <!-- Left: Windy Red Brand Pill & Sidebar Toggle -->
+    <div class="topbar-left">
+      <button id="btn-toggle-sidebar" class="windy-menu-btn" title="เปิด/ปิด แผงพยากรณ์สภาพอากาศ">
+        <span class="icon-menu">☰</span>
+      </button>
+      
+      <div class="windy-logo-pill">
+        <span class="logo-icon">🌀</span>
+        <span class="logo-text">CONVRAIN</span>
+        <span class="badge-live" id="dataset-badge">LIVE</span>
+      </div>
     </div>
 
-    <div class="rdt-drawer-body">
-      <button id="btn-gps" class="btn-gps-rdt">
-        <span>📍</span>
-        <span>ดึงตำแหน่ง GPS ของเครื่อง</span>
+    <!-- Center: Operational Telemetry & Quick Info -->
+    <div class="topbar-center">
+      <div class="windy-telemetry-pill">
+        <span class="tel-item"><span class="live-dot">●</span> <span id="topbar-source">Himawari-9 AHI + Radar</span></span>
+        <span class="tel-divider">|</span>
+        <span class="tel-item">⏱ <strong id="topbar-time">15:00 น. (08:00 UTC)</strong></span>
+        <span class="tel-divider">|</span>
+        <span class="tel-item">☁️ <span id="topbar-cells">1,051 เซลล์</span></span>
+      </div>
+    </div>
+
+    <!-- Right: Operational Controls -->
+    <div class="topbar-right">
+      <button id="btn-dataset-switch" class="windy-pill-btn" title="คลิกสลับระหว่างข้อมูลจริง Himawari-9 และข้อมูลจำลอง">
+        <span id="dataset-icon">🛰️</span>
+        <span id="dataset-name" class="btn-text">ข้อมูลจริง Himawari-9</span>
       </button>
 
-      <div class="rdt-input-group">
-        <input type="number" id="input-lat" class="rdt-input" placeholder="Latitude (13.7563)" step="0.0001" value="13.5407">
-        <input type="number" id="input-lon" class="rdt-input" placeholder="Longitude (100.5018)" step="0.0001" value="100.4041">
-        <button id="btn-check-coords" class="btn-rdt-submit">ตรวจสอบ</button>
+      <button id="toggle-theme" class="windy-pill-btn" title="สลับโหมดมืด (Dark Mode) และโหมดสว่าง">
+        <span id="icon-theme">🌙</span>
+        <span id="lbl-theme" class="btn-text">Dark Mode</span>
+      </button>
+
+      <button id="toggle-basemap" class="windy-pill-btn" title="สลับแผนที่พื้นหลัง">
+        <span>🗺️</span>
+        <span id="lbl-basemap" class="btn-text">Dark Canvas</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =================================================================
+       Main Layout: Sidebar + Map Canvas + Windy Overlays
+  ================================================================== -->
+  <div class="app-main-layout">
+    
+    <!-- Left Collapsible Windy Weather Detail Panel -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title-group">
+          <span class="sidebar-title">📍 พยากรณ์ฝนรายพิกัด</span>
+          <span class="sidebar-subtitle" id="gps-status-lbl">คลิกบนแผนที่หรือปักหมุด</span>
+        </div>
+        <button id="btn-close-sidebar" class="sidebar-close-btn" title="ย่อแถบข้าง">✕</button>
       </div>
 
-      <div class="preset-chip-list">
-        <span style="color: #94a3b8; align-self: center;">พิกัดแนะนำ:</span>
-        <span class="preset-item" data-lat="13.7563" data-lon="100.5018">กรุงเทพฯ</span>
-        <span class="preset-item" data-lat="13.5407" data-lon="100.4041">สมุทรปราการ</span>
-        <span class="preset-item" data-lat="13.3611" data-lon="100.9847">ชลบุรี</span>
-        <span class="preset-item" data-lat="14.2069" data-lon="101.2131">นครนายก</span>
-        <span class="preset-item" data-lat="14.0510" data-lon="101.3734">ปราจีนบุรี</span>
-        <span class="preset-item" data-lat="16.8467" data-lon="101.5753">เพชรบูรณ์ (ฝนตก)</span>
-        <span class="preset-item" data-lat="13.2267" data-lon="99.2093">เพชรบุรี (ฝนตก)</span>
+      <div class="sidebar-content">
+        <!-- GPS Quick Target Button -->
+        <button id="btn-gps" class="btn-windy-gps">
+          <span class="gps-icon">📍</span>
+          <span class="gps-text">ดึงพิกัด GPS ตำแหน่งปัจจุบัน</span>
+        </button>
+
+        <!-- Coordinates Search Input Card -->
+        <div class="coord-input-card">
+          <div class="coord-inputs">
+            <div class="input-field">
+              <label for="input-lat">LAT</label>
+              <input type="number" id="input-lat" placeholder="13.7563" step="0.0001" value="13.5407">
+            </div>
+            <div class="input-field">
+              <label for="input-lon">LON</label>
+              <input type="number" id="input-lon" placeholder="100.5018" step="0.0001" value="100.4041">
+            </div>
+            <button id="btn-check-coords" class="btn-coord-search" title="คำนวณพิกัด">ตรวจ</button>
+          </div>
+        </div>
+
+        <!-- Quick Location Chips -->
+        <div class="preset-section">
+          <div class="preset-header">พิกัดยอดนิยม:</div>
+          <div class="preset-chips">
+            <button class="preset-chip" data-lat="13.7563" data-lon="100.5018">กรุงเทพฯ</button>
+            <button class="preset-chip" data-lat="13.5407" data-lon="100.4041">สมุทรปราการ</button>
+            <button class="preset-chip" data-lat="13.3611" data-lon="100.9847">ชลบุรี</button>
+            <button class="preset-chip" data-lat="16.8467" data-lon="101.5753">เพชรบูรณ์ (ฝนตก)</button>
+            <button class="preset-chip" data-lat="13.2267" data-lon="99.2093">เพชรบุรี (ฝนตก)</button>
+            <button class="preset-chip" data-lat="18.7883" data-lon="98.9853">เชียงใหม่</button>
+          </div>
+        </div>
+
+        <!-- Cloud Opacity Controller (Windy Style) -->
+        <div class="opacity-ctrl-section">
+          <div class="opacity-label-row">
+            <span>☁️ ความโปร่งแสงเมฆ (Cloud Opacity):</span>
+            <span id="lbl-cloud-opacity">30%</span>
+          </div>
+          <input type="range" id="slider-cloud-opacity" class="opacity-range" min="10" max="80" value="30">
+        </div>
+
+        <!-- Dynamic Rain Forecast Alert Card -->
+        <div id="rain-result-card" class="result-card-container">
+          <div class="result-placeholder">
+            <span class="placeholder-icon">👆</span>
+            <span>คลิกบนแผนที่ หรือกดปุ่ม GPS ด้านบน เพื่อดูเวลาเริ่มตกและทิศทางลมที่เมฆกำลังพัดมา</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Map Viewport Container -->
+    <div id="map-container" class="map-viewport">
+      <div id="map"></div>
+
+      <!-- Right-Side Floating Windy Layer Menu (The Iconic Layer Stack) -->
+      <nav class="windy-layer-menu" aria-label="Layer Controls">
+        <button id="toggle-smooth-clouds" class="windy-layer-btn active" title="สลับโหมดเมฆธรรมชาติโค้งมน (Smooth) / กรอบวิเคราะห์ (Raw)">
+          <span class="layer-icon">✨</span>
+          <span class="layer-label">เมฆธรรมชาติ (Smooth)</span>
+        </button>
+
+        <button id="toggle-sat-clouds" class="windy-layer-btn active" title="เปิด/ปิด เมฆดาวเทียม">
+          <span class="layer-icon">🛰️</span>
+          <span class="layer-label">ดาวเทียม (Clouds)</span>
+        </button>
+
+        <button id="toggle-footprints" class="windy-layer-btn active" title="เปิด/ปิด กลุ่มฝนคอนเวกทีฟ">
+          <span class="layer-icon">🌧️</span>
+          <span class="layer-label">เรดาร์ฝน (Rain Cells)</span>
+        </button>
+
+        <button id="toggle-trajectories" class="windy-layer-btn active" title="เปิด/ปิด ทิศทางลมและการเคลื่อนตัว">
+          <span class="layer-icon">➔</span>
+          <span class="layer-label">ทิศทางลม/เมฆ (Motion)</span>
+        </button>
+
+        <button id="toggle-impact-zones" class="windy-layer-btn active" title="เปิด/ปิด จุดคาดการณ์ฝนตก">
+          <span class="layer-icon">🎯</span>
+          <span class="layer-label">จุดคาดฝนตก (Impacts)</span>
+        </button>
+
+        <button id="toggle-graticule" class="windy-layer-btn active" title="เปิด/ปิด เส้นพิกัดภูมิศาสตร์">
+          <span class="layer-icon">🌐</span>
+          <span class="layer-label">เส้นพิกัด (Graticule)</span>
+        </button>
+      </nav>
+
+      <!-- Bottom-Right Windy Color Scale & Legend -->
+      <div class="windy-legend-stack">
+        <!-- Collapsible Convective Phase Legend -->
+        <div id="legend-panel" class="app-legend collapsed">
+          <div class="legend-header" id="btn-toggle-legend">
+            <span class="legend-title">RDT-CW CONVECTIVE PHASES</span>
+            <span class="legend-collapse-icon" id="icon-legend-collapse">+</span>
+          </div>
+          <div class="legend-body" id="legend-body">
+            <div class="legend-row">
+              <div class="swatch swatch-cloud"></div>
+              <span>เงาเมฆดาวเทียม (Satellite Cloud Deck)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-rain"></div>
+              <span>ฝนตกแล้ว (Mature / Active Rain)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-dev"></div>
+              <span>กำลังพัฒนาตัว (Developing / Triggering)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-decay"></div>
+              <span>กำลังสลายตัว (Decaying)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-impact"></div>
+              <span>พื้นที่คาดการณ์ตก (Projected Landfall)</span>
+            </div>
+            <div class="legend-row">
+              <span class="swatch-arrow" id="legend-arrow-icon">➔</span>
+              <span>ทิศทางการเคลื่อนที่ (Motion Vector)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Windy Rain Intensity Scale Bar -->
+        <div class="windy-color-scale-card">
+          <div class="scale-header">
+            <span>ฝน (มม./ชม.)</span>
+            <span class="scale-unit">Rain Rate (mm/h)</span>
+          </div>
+          <div class="scale-gradient-bar"></div>
+          <div class="scale-ticks">
+            <span>0</span>
+            <span>0.5</span>
+            <span>1</span>
+            <span>2.5</span>
+            <span>5</span>
+            <span>10</span>
+            <span>20+</span>
+          </div>
+        </div>
       </div>
 
-      <!-- Point Alert Output Card -->
-      <div id="rain-result-card" style="display: none;"></div>
-    </div>
-  </div>
+      <!-- Bottom Floating Windy Timeline Player Dock -->
+      <div class="windy-player-dock">
+        <div class="player-controls">
+          <button id="btn-prev" class="player-btn" title="ย้อนกลับ 1 รอบเวลา">⏮</button>
+          <button id="btn-play" class="player-btn-main" title="เล่นภาพเคลื่อนไหว">▶</button>
+          <button id="btn-next" class="player-btn" title="ไปข้างหน้า 1 รอบเวลา">⏭</button>
+        </div>
 
-  <!-- Meteorological Legend (Bottom Right) -->
-  <div class="rdt-legend-panel">
-    <div style="font-weight: 700; margin-bottom: 6px; font-size: 10.5px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 3px;">
-      RDT-CW CONVECTIVE PHASES
-    </div>
-    <div class="legend-item">
-      <div class="legend-swatch" style="border: 1px solid rgba(255,255,255,0.4); background: linear-gradient(90deg, rgba(200,215,235,0.6), rgba(150,170,195,0.1));"></div>
-      <span>เงาเมฆดาวเทียม (Satellite Cloud Deck)</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-swatch" style="border: 2px solid #ef4444; background: #22d3ee;"></div>
-      <span>ฝนตกแล้ว (Mature / Active Rain)</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-swatch" style="border: 2px solid #e879f9; background: #fde047;"></div>
-      <span>กำลังพัฒนาตัว (Developing / Triggering)</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-swatch" style="border: 1.5px dashed #3b82f6; background: #93c5fd;"></div>
-      <span>กำลังสลายตัว (Decaying)</span>
-    </div>
-    <div class="legend-item">
-      <div class="legend-swatch" style="border: 1.5px dashed #ef4444; background: #fca5a5;"></div>
-      <span>พื้นที่คาดการณ์ตก (Projected Landfall)</span>
-    </div>
-    <div class="legend-item">
-      <span id="legend-arrow-icon" style="font-weight: bold; color: #facc15; font-size: 14px; line-height: 10px;">➔</span>
-      <span>ทิศทางการเคลื่อนที่ (Motion Vector)</span>
-    </div>
-  </div>
-
-  <!-- Map Canvas -->
-  <div id="map"></div>
-
-  <!-- Bottom Timeline Playback Controller -->
-  <div class="rdt-bottom-bar">
-    <button id="btn-prev" class="rdt-ctrl-btn" title="ย้อนกลับ 1 รอบ">⏮</button>
-    <button id="btn-play" class="rdt-ctrl-btn" title="เล่นภาพเคลื่อนไหว">▶</button>
-    <button id="btn-next" class="rdt-ctrl-btn" title="ไปข้างหน้า 1 รอบ">⏭</button>
-
-    <div class="rdt-slider-wrap">
-      <div class="rdt-slider-labels">
-        <span id="slider-start-lbl">06:00 UTC</span>
-        <span id="slider-sub-lbl">HIMAWARI-8/9 AHI SATELLITE + THAILAND RADAR (28 ก.ย. 2026)</span>
-        <span id="slider-end-lbl">08:00 UTC</span>
+        <div class="player-timeline-body">
+          <div class="player-meta-row">
+            <span id="slider-start-lbl" class="player-time-badge">13:00 น. (06:00 UTC)</span>
+            <span id="slider-sub-lbl" class="player-source-text">HIMAWARI-8/9 AHI + THAILAND RADAR (28 ก.ย. 2026)</span>
+            <span id="slider-end-lbl" class="player-time-badge live-time">15:00 น. (08:00 UTC)</span>
+          </div>
+          <input type="range" id="timeline-slider" class="windy-slider" min="0" max="0" value="0">
+        </div>
       </div>
-      <input type="range" id="timeline-slider" class="rdt-slider" min="0" max="0" value="0">
     </div>
   </div>
 
   <!-- Local Leaflet Vendor JS -->
   <script src="/static/vendor/leaflet.js"></script>
 
-  <!-- RDT Application JS -->
+  <!-- Application Logic -->
   <script src="/static/app.js"></script>
 
 </body>

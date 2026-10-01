@@ -1,0 +1,16 @@
+# Config สำหรับทดสอบระบบด้วยโหมดความแม่นยำสูงสุด (Maximum Accuracy Mode)
+# บนข้อมูลจริงปัจจุบัน (Live Real Data 2026-10-01)
+detect:
+  refine_contours: true
+  active_contour_iter: 4
+
+motion:
+  method: mcc
+  mcc_tile_size: 24
+  mcc_stride: 12
+  mcc_search_pad: 14
+  mcc_min_corr: 0.35
+
+track:
+  use_kinematic_cost: true
+  max_match_dist_px: 60.0
