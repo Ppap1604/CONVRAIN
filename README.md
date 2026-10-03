@@ -43,6 +43,8 @@ convrain/
 ```bash
 conda env create -f environment.yml && conda activate convrain
 # หรือ
+python -m venv convrain_env
+source convrain_env/bin/activate
 pip install -r requirements.txt
 ```
 
