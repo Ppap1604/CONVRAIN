@@ -147,8 +147,7 @@ def update_status(track: Track, feats: dict, rain: dict, time: datetime, cfg: di
     s = track.status
 
     if s == "developing":
-        phys_ok = feats.get("cold_bt", 300.0) <= 245.0 and rate <= 0.5
-        if raining_now or (onset_eta is not None and time >= onset_eta and phys_ok):
+        if raining_now or (onset_eta is not None and time >= onset_eta):
             s, track.rain_started = "raining", time
     elif s == "raining":
         since = (time - track.rain_started).total_seconds() / 60.0 if track.rain_started else 0.0

@@ -1,1428 +1,1114 @@
-/* ==========================================================================
-   CONVRAIN: Precision Satellite Convective Nowcasting Platform
-   UI/UX & Frontend Architecture Design System (SpaceX + Apple + Windy)
-   Zero-Page-Scroll Heads-Up Display (HUD)
-   ========================================================================== */
+/**
+ * CONVRAIN - Satellite Convective Rain Onset Nowcast Web Platform
+ * Windy.com-Inspired Meteorological Design System
+ */
 
-/* --------------------------------------------------------------------------
-   1. Design Tokens & Color Palette
-   -------------------------------------------------------------------------- */
+/* =====================================================================
+   Design Tokens & CSS Variables (Windy Theme)
+===================================================================== */
 :root {
-  /* Surfaces & Backgrounds (Warm Earth Obsidian & Natural Stone Glass) */
-  --bg-canvas: #121312;
-  --bg-obsidian: #0D0E0D;
-  --glass-primary: rgba(24, 25, 23, 0.82);
-  --glass-elevated: rgba(33, 35, 32, 0.90);
-  --glass-card: rgba(28, 30, 27, 0.76);
-  --glass-input: rgba(18, 19, 17, 0.88);
-  --border-subtle: rgba(226, 218, 204, 0.10);
-  --border-hover: rgba(226, 218, 204, 0.22);
-  --border-active: rgba(201, 168, 124, 0.45);
+  /* Windy Deep Charcoal / Oceanic Slate */
+  --bg-app: #111723;
+  --bg-glass-nav: rgba(19, 25, 37, 0.92);
+  --bg-glass-panel: rgba(22, 29, 44, 0.88);
+  --bg-glass-card: rgba(28, 38, 58, 0.80);
+  --bg-glass-hover: rgba(40, 54, 82, 0.90);
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-prominent: rgba(255, 255, 255, 0.18);
 
-  /* Earth Tone Semantic Colors */
-  --earth-sand: #C9A87C;
-  --earth-sand-glow: rgba(201, 168, 124, 0.25);
-  --cyan-telemetry: #C9A87C;
-  --cyan-glow: rgba(201, 168, 124, 0.25);
+  /* Typography Colors */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
 
-  --earth-terracotta: #D46A4C;
-  --earth-terracotta-glow: rgba(212, 106, 76, 0.35);
-  --crimson-warning: #D46A4C;
-  --crimson-glow: rgba(212, 106, 76, 0.35);
+  /* Signature Windy Accents */
+  --windy-red: #eb2f06;
+  --windy-coral: #ff4757;
+  --windy-coral-glow: rgba(235, 47, 6, 0.35);
+  --windy-cyan: #00d2d3;
+  --windy-cyan-glow: rgba(0, 210, 211, 0.30);
+  --windy-green: #2ed573;
+  --windy-yellow: #ffa502;
+  --windy-blue: #1e90ff;
 
-  --earth-ochre: #D99B52;
-  --earth-ochre-glow: rgba(217, 155, 82, 0.30);
-  --amber-watch: #D99B52;
-  --amber-glow: rgba(217, 155, 82, 0.30);
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Consolas", monospace;
 
-  --earth-sage: #7FA073;
-  --earth-sage-glow: rgba(127, 160, 115, 0.35);
-  --emerald-healthy: #7FA073;
-  --emerald-glow: rgba(127, 160, 115, 0.35);
-
-  --earth-slate-blue: #7E9AA8;
-  --vector-parallax: #8EAEBA;
-  --cobalt-core: #4A6B82;
-  --violet-deep: #7E6A80;
-
-  /* Typography (Plus Jakarta Sans + Prompt + JetBrains Mono) */
-  --font-ui: "Plus Jakarta Sans", "Prompt", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
-
-  /* Squircles & Minimalist Blur */
-  --radius-pill: 9999px;
-  --radius-card: 16px;
-  --radius-bento: 14px;
-  --radius-modal: 20px;
-  --blur-glass: blur(20px) saturate(140%);
-  --shadow-hud: 0 10px 30px 0 rgba(0, 0, 0, 0.45);
+  --topbar-height: 50px;
+  --sidebar-width: 330px;
 }
 
-/* --------------------------------------------------------------------------
-   2. Reset & Zero-Page-Scroll Viewport
-   -------------------------------------------------------------------------- */
-*, *::before, *::after {
+body.light-theme {
+  --bg-app: #e2e8f0;
+  --bg-glass-nav: rgba(255, 255, 255, 0.94);
+  --bg-glass-panel: rgba(248, 250, 252, 0.92);
+  --bg-glass-card: rgba(255, 255, 255, 0.96);
+  --bg-glass-hover: rgba(226, 232, 240, 0.85);
+  --border-subtle: rgba(0, 0, 0, 0.10);
+  --border-prominent: rgba(0, 0, 0, 0.20);
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+}
+
+/* =====================================================================
+   Base Reset
+===================================================================== */
+* {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  -webkit-tap-highlight-color: transparent;
 }
 
 html, body {
-  width: 100vw;
-  height: 100vh;
-  max-width: 100vw;
-  max-height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  background-color: var(--bg-canvas);
-  color: #F3EFEA;
   font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.5;
-  letter-spacing: -0.01em;
-  user-select: none;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Helper Text Classes */
-.font-mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-.text-cyan { color: var(--cyan-telemetry) !important; }
-.text-crimson { color: var(--crimson-warning) !important; }
-.text-amber { color: var(--amber-watch) !important; }
-.text-emerald { color: var(--emerald-healthy) !important; }
-
-/* --------------------------------------------------------------------------
-   3. ZONE A: Top Telemetry & Pipeline Status Bar (SpaceX-inspired)
-   -------------------------------------------------------------------------- */
-.zone-a-topbar {
-  position: absolute;
-  top: 12px;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.telemetry-capsule {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  padding: 6px 18px;
-  box-shadow: var(--shadow-hud);
+button {
+  font-family: inherit;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+  outline: none;
+  background: none;
 }
 
-.telemetry-capsule:hover {
-  background: var(--glass-elevated);
-  border-color: var(--cyan-telemetry);
-  box-shadow: 0 0 24px var(--cyan-glow), var(--shadow-hud);
-  transform: translateY(-1px);
+input {
+  font-family: inherit;
+  outline: none;
 }
 
-.tel-item {
+/* =====================================================================
+   1. Unified Windy Topbar
+===================================================================== */
+.app-topbar {
+  height: var(--topbar-height);
+  width: 100%;
+  background: var(--bg-glass-nav);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 1000;
+  gap: 12px;
 }
 
-.tel-divider {
-  width: 1px;
-  height: 16px;
-  background-color: var(--border-subtle);
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
-.live-pulse-group {
+.windy-menu-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 16px;
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s ease;
+}
+
+.windy-menu-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  border-color: var(--windy-coral);
+}
+
+/* Signature Windy Coral-Red Logo Capsule */
+.windy-logo-pill {
+  display: flex;
+  align-items: center;
   gap: 7px;
+  background: linear-gradient(135deg, #ff4757 0%, #eb2f06 100%);
+  color: #ffffff;
+  padding: 5px 12px;
+  border-radius: 20px;
+  box-shadow: 0 3px 12px var(--windy-coral-glow);
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  user-select: none;
+}
+
+.logo-icon {
+  font-size: 15px;
+}
+
+.logo-text {
+  font-size: 13.5px;
+  font-family: var(--font-mono);
+}
+
+.badge-live {
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-size: 8.5px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+.topbar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.windy-telemetry-pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-subtle);
+  padding: 5px 16px;
+  border-radius: 22px;
+  font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: var(--emerald-healthy);
-  box-shadow: 0 0 10px var(--emerald-healthy);
-}
-
-.pulse-green {
-  animation: pulse-ring 2s infinite ease-out;
-}
-
-@keyframes pulse-ring {
-  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(127, 160, 115, 0.7); }
-  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(127, 160, 115, 0); }
-  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(127, 160, 115, 0); }
-}
-
-.brand-badge {
-  font-family: var(--font-mono);
-  font-weight: 700;
+  color: var(--windy-green);
+  animation: pulse 1.8s infinite;
   font-size: 13px;
-  letter-spacing: 1px;
-  background: linear-gradient(135deg, #E2C097 0%, #D46A4C 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  line-height: 10px;
 }
 
-.brand-sub {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: rgba(201, 168, 124, 0.12);
-  color: var(--earth-sand);
-  border: 1px solid rgba(201, 168, 124, 0.25);
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.3; }
+  100% { opacity: 1; }
 }
 
-.tel-dim {
-  color: #8C8375;
-  font-size: 11px;
+.tel-item {
+  color: var(--text-secondary);
 }
 
-.tel-val {
-  color: #F3EFEA;
-  font-weight: 600;
+.tel-item strong {
+  color: var(--text-primary);
 }
 
-.micro-badge {
-  font-size: 9px;
-  background: rgba(226, 218, 204, 0.08);
-  padding: 1px 5px;
-  border-radius: 3px;
-  color: #BDB4A6;
+.tel-divider {
+  color: var(--border-prominent);
 }
 
-.mode-btn {
-  background: rgba(226, 218, 204, 0.06);
-  border: 1px solid var(--border-subtle);
-  color: #E6E0D6;
-  border-radius: var(--radius-pill);
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
+.topbar-right {
   display: flex;
   align-items: center;
-  gap: 5px;
-  transition: all 0.2s;
-}
-
-.mode-btn:hover {
-  background: rgba(201, 168, 124, 0.14);
-  border-color: var(--earth-sand);
-  color: var(--earth-sand);
-}
-
-.mode-arrow {
-  font-size: 12px;
-}
-
-/* --------------------------------------------------------------------------
-   4. ZONE B: Interactive WebGL Map Canvas
-   -------------------------------------------------------------------------- */
-.hud-viewport-container {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-}
-
-.hud-map-canvas {
-  width: 100%;
-  height: 100%;
-  background: #06080E;
-}
-
-/* High-tech Dark Base Map Canvas */
-.leaflet-tile-pane {
-  opacity: 0.92;
-}
-
-.leaflet-pane.leaflet-labelsPane-pane {
-  z-index: 650;
-  pointer-events: none;
-}
-
-/* Hide default leaflet attribution / zoom for clean HUD aesthetic */
-.leaflet-control-zoom, .leaflet-control-attribution {
-  display: none !important;
-}
-
-/* Map Search & Preset Location Bar */
-.map-search-capsule {
-  position: absolute;
-  top: 70px;
-  left: 24px;
-  z-index: 900;
-  display: flex;
-  flex-direction: column;
   gap: 8px;
-  pointer-events: auto;
+  flex-shrink: 0;
 }
 
-.search-input-group {
+.windy-pill-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
+  background: var(--bg-glass-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  padding: 4px 6px 4px 14px;
-  box-shadow: var(--shadow-hud);
-  width: 440px;
-  transition: all 0.2s;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 18px;
+  transition: all 0.2s ease;
 }
 
-.search-input-group:focus-within {
-  border-color: var(--cyan-telemetry);
-  box-shadow: 0 0 16px var(--cyan-glow), var(--shadow-hud);
+.windy-pill-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  border-color: var(--border-prominent);
+  transform: translateY(-1px);
 }
 
-.search-icon {
-  font-size: 14px;
-  color: var(--cyan-telemetry);
-}
-
-#coord-search-input {
+/* =====================================================================
+   2. Main Layout (Sidebar + Map Viewport)
+===================================================================== */
+.app-main-layout {
+  display: flex;
   flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: #F3EFEA;
-  font-family: var(--font-ui);
-  font-size: 12px;
-}
-
-#coord-search-input::placeholder {
-  color: #8C8375;
-}
-
-.search-btn, .gps-btn {
-  background: rgba(201, 168, 124, 0.14);
-  border: 1px solid rgba(201, 168, 124, 0.35);
-  color: var(--earth-sand);
-  border-radius: var(--radius-pill);
-  padding: 4px 12px;
-  font-size: 11px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.search-btn:hover, .gps-btn:hover {
-  background: var(--earth-sand);
-  color: #121312;
-  box-shadow: 0 0 12px var(--earth-sand-glow);
-}
-
-.gps-btn {
-  background: rgba(226, 218, 204, 0.08);
-  border-color: var(--border-subtle);
-  color: #BDB4A6;
-}
-
-.gps-btn:hover {
-  background: rgba(226, 218, 204, 0.18);
-  color: #F3EFEA;
-}
-
-.preset-location-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.chip {
-  background: var(--glass-card);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
-  padding: 3px 10px;
-  font-size: 11px;
-  color: #BDB4A6;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.chip:hover {
-  background: rgba(201, 168, 124, 0.14);
-  border-color: var(--earth-sand);
-  color: #F3EFEA;
-}
-
-/* --------------------------------------------------------------------------
-   5. Target Reticle (Minimal Radar Targeting System)
-   -------------------------------------------------------------------------- */
-.spacex-reticle-container {
   position: relative;
-  width: 90px;
-  height: 90px;
-  pointer-events: none;
+  overflow: hidden;
+  height: calc(100vh - var(--topbar-height));
 }
 
-.reticle-outer-ring {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
+/* Collapsible Left Sidebar */
+.app-sidebar {
+  width: var(--sidebar-width);
   height: 100%;
-  border: 1px dashed var(--earth-sand);
-  border-radius: 50%;
-  animation: reticle-spin 12s linear infinite;
-  box-shadow: 0 0 12px var(--earth-sand-glow);
-}
-
-.reticle-inner-ring {
-  position: absolute;
-  top: 15px;
-  left: 15px;
-  width: 60px;
-  height: 60px;
-  border: 1px solid rgba(201, 168, 124, 0.5);
-  border-radius: 50%;
-  animation: reticle-pulse 2.5s ease-in-out infinite;
-}
-
-.reticle-crosshair-h {
-  position: absolute;
-  top: 44px;
-  left: -8px;
-  width: 106px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--earth-sand), transparent);
-}
-
-.reticle-crosshair-v {
-  position: absolute;
-  top: -8px;
-  left: 44px;
-  width: 1px;
-  height: 106px;
-  background: linear-gradient(180deg, transparent, var(--earth-sand), transparent);
-}
-
-.reticle-center-dot {
-  position: absolute;
-  top: 41px;
-  left: 41px;
-  width: 8px;
-  height: 8px;
-  background: var(--earth-terracotta);
-  border-radius: 50%;
-  box-shadow: 0 0 8px var(--earth-terracotta);
-}
-
-@keyframes reticle-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-@keyframes reticle-pulse {
-  0%, 100% { transform: scale(0.96); opacity: 0.7; }
-  50% { transform: scale(1.04); opacity: 1; }
-}
-
-/* Concentric Risk Rings Label */
-.reticle-risk-label {
-  position: absolute;
-  top: -24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(18, 19, 17, 0.88);
-  border: 1px solid var(--earth-sand);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--earth-sand);
-  white-space: nowrap;
-}
-
-/* --------------------------------------------------------------------------
-   6. ZONE E: Left Floating Layer & Filter Pill
-   -------------------------------------------------------------------------- */
-.zone-e-layer-pill {
-  position: absolute;
-  top: 150px;
-  left: 24px;
-  z-index: 950;
+  background: var(--bg-glass-panel);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  padding: 12px 10px;
-  box-shadow: var(--shadow-hud);
-  width: 190px;
-  pointer-events: auto;
+  z-index: 900;
+  transition: margin-left 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
 }
 
-.layer-pill-header {
+.app-sidebar.collapsed {
+  margin-left: calc(-1 * var(--sidebar-width));
+}
+
+.sidebar-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px 6px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.pill-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--earth-sand);
-  box-shadow: 0 0 6px var(--earth-sand-glow);
-}
-
-.pill-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  color: #BDB4A6;
-}
-
-.layer-pill-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 6px 10px;
-  color: #BDB4A6;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.2s;
-}
-
-.layer-pill-btn:hover {
-  background: rgba(226, 218, 204, 0.06);
-  color: #F3EFEA;
-}
-
-.layer-pill-btn.active {
-  background: rgba(201, 168, 124, 0.14);
-  border-color: rgba(201, 168, 124, 0.35);
-  color: var(--earth-sand);
-  box-shadow: 0 0 10px rgba(201, 168, 124, 0.12);
-}
-
-.btn-icon {
-  font-size: 14px;
-}
-
-.pill-divider {
-  height: 1px;
-  background: rgba(226, 218, 204, 0.08);
-  margin: 4px 0;
-}
-
-.filter-btn.active {
-  background: rgba(212, 106, 76, 0.16);
-  border-color: var(--earth-terracotta);
-  color: var(--earth-terracotta);
-}
-
-.special-btn {
-  background: rgba(142, 174, 186, 0.08);
-  border-color: rgba(142, 174, 186, 0.2);
-  color: var(--vector-parallax);
-}
-
-.special-btn.active {
-  background: rgba(142, 174, 186, 0.2);
-  border-color: var(--vector-parallax);
-  color: #F3EFEA;
-  box-shadow: 0 0 12px rgba(142, 174, 186, 0.3);
-}
-
-/* --------------------------------------------------------------------------
-   7. Convective Color Ramp & Status Legend
-   -------------------------------------------------------------------------- */
-.hud-legend-card {
-  position: absolute;
-  bottom: 95px;
-  right: 24px;
-  z-index: 950;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  padding: 10px 14px;
-  box-shadow: var(--shadow-hud);
-  width: 280px;
-  pointer-events: auto;
-}
-
-.legend-header-row {
-  display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
 }
 
-.legend-hdr-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: #D6CEBE;
-}
-
-.legend-tag {
-  font-size: 9px;
-  color: var(--earth-sand);
-  background: rgba(201, 168, 124, 0.14);
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.legend-bar-container {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.legend-bar {
-  height: 8px;
-  border-radius: 4px;
-  background: linear-gradient(90deg, 
-    #3D5A6C 0%, 
-    #5C7C8A 25%, 
-    #6B5B75 50%, 
-    #8D4E5B 75%, 
-    #D99B52 90%, 
-    #D46A4C 100%
-  );
-  box-shadow: 0 0 6px rgba(212, 106, 76, 0.25);
-}
-
-.legend-labels {
-  display: flex;
-  justify-content: space-between;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: #8C8375;
-}
-
-.legend-sub-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: #BDB4A6;
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(226, 218, 204, 0.08);
-}
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.dot-cyan { background: var(--earth-sage); }
-.dot-amber { background: var(--earth-ochre); }
-.dot-crimson { background: var(--earth-terracotta); }
-
-/* --------------------------------------------------------------------------
-   8. ZONE C: Right-Hand Inspector Drawer (Apple Bento Grid)
-   -------------------------------------------------------------------------- */
-.zone-c-inspector {
-  position: absolute;
-  top: 70px;
-  right: 24px;
-  bottom: 85px;
-  width: 430px;
-  z-index: 1000;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-modal);
-  box-shadow: var(--shadow-hud);
-  display: flex;
-  flex-direction: column;
-  transform: translateX(470px);
-  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1);
-  pointer-events: auto;
-}
-
-.zone-c-inspector.open {
-  transform: translateX(0);
-}
-
-.drawer-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.drawer-title-group {
+.sidebar-title-group {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.drawer-tag {
-  font-family: var(--font-mono);
-  font-size: 10px;
+.sidebar-title {
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: 1px;
-  color: var(--cyan-telemetry);
+  color: var(--text-primary);
 }
 
-.drawer-coord-lbl {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: #94A3B8;
+.sidebar-subtitle {
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
-.drawer-close-btn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid var(--border-subtle);
-  color: #CBD5E1;
+.sidebar-close-btn {
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: all 0.2s ease;
 }
 
-.drawer-close-btn:hover {
-  background: rgba(255, 42, 95, 0.2);
-  border-color: var(--crimson-warning);
-  color: var(--crimson-warning);
+.sidebar-close-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
 }
 
-.drawer-body {
+.sidebar-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.drawer-body::-webkit-scrollbar {
+.sidebar-content::-webkit-scrollbar {
   width: 4px;
 }
-.drawer-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: var(--border-prominent);
+  border-radius: 2px;
 }
 
-/* 1. Bento Hero Card */
-.bento-hero-card {
-  background: var(--glass-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-}
-
-.hero-status-badge-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.status-pill {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-}
-
-.status-warning {
-  background: rgba(212, 106, 76, 0.16);
-  color: var(--earth-terracotta);
-  border: 1px solid rgba(212, 106, 76, 0.4);
-}
-
-.status-watch {
-  background: rgba(217, 155, 82, 0.16);
-  color: var(--earth-ochre);
-  border: 1px solid rgba(217, 155, 82, 0.4);
-}
-
-.status-clear {
-  background: rgba(127, 160, 115, 0.16);
-  color: var(--earth-sage);
-  border: 1px solid rgba(127, 160, 115, 0.4);
-}
-
-.confidence-text {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: #BDB4A6;
-}
-
-.hero-headline {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: #F3EFEA;
-}
-
-.confidence-progress-bar {
+/* Windy GPS Action Button */
+.btn-windy-gps {
   width: 100%;
-  height: 6px;
-  background: rgba(226, 218, 204, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.confidence-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #D99B52, #D46A4C);
-  border-radius: 3px;
-  transition: width 0.4s ease-out;
-}
-
-.hero-eta-sub {
-  font-size: 11px;
-  color: #8C8375;
-}
-
-/* 2. Parallax Badge Card */
-.parallax-badge-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(126, 154, 168, 0.08);
-  border: 1px solid rgba(126, 154, 168, 0.22);
-  border-radius: var(--radius-card);
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #ffa502 0%, #e67e22 100%);
+  color: #111723;
+  font-size: 12px;
+  font-weight: 700;
   padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(255, 165, 2, 0.3);
+  transition: all 0.2s ease;
 }
 
-.badge-icon {
-  font-size: 16px;
+.btn-windy-gps:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 165, 2, 0.45);
 }
 
-.badge-content {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.badge-id-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.badge-track-id {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--vector-parallax);
-}
-
-.badge-corrected-tag {
-  font-size: 9px;
-  background: rgba(126, 154, 168, 0.2);
-  color: #F3EFEA;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.badge-shift-desc {
-  font-size: 11px;
-  color: #D6CEBE;
-}
-
-/* 3. Apple Bento Grid */
-.apple-bento-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.bento-card {
-  background: var(--glass-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-bento);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: all 0.2s;
-}
-
-.bento-card:hover {
-  background: var(--glass-elevated);
-  border-color: var(--border-hover);
-}
-
-.card-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: #8C8375;
-}
-
-.card-value-row {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.card-main-val {
-  font-size: 18px;
-  font-weight: 600;
-  color: #F3EFEA;
-}
-
-.card-sub-val {
-  font-size: 11px;
-  color: #8C8375;
-}
-
-.card-trend {
-  font-size: 10px;
-  color: #BDB4A6;
-  margin-top: 2px;
-}
-
-/* 4. Micro-Timeseries Chart */
-.micro-chart-card {
-  background: var(--glass-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chart-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.chart-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  color: #D6CEBE;
-}
-
-.chart-legend-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 9px;
-  color: #8C8375;
-}
-
-.legend-line {
-  width: 12px;
-  height: 2px;
-  border-radius: 1px;
-}
-.line-tb { background-color: var(--earth-slate-blue); }
-.line-prob { background-color: var(--earth-terracotta); }
-
-.chart-canvas-wrapper {
-  position: relative;
-  width: 100%;
-  height: 120px;
-}
-
-.micro-chart-svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-
-.chart-footer-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: #64748B;
-}
-
-.threshold-marker {
-  color: var(--amber-watch);
-  font-size: 9px;
-}
-
-.chart-tooltip {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(18, 19, 17, 0.92);
-  border: 1px solid var(--earth-sand);
-  border-radius: 4px;
-  padding: 3px 8px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: #F3EFEA;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.hidden {
-  display: none !important;
-}
-
-/* 5. Drawer Action Buttons */
-.drawer-actions-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-
-.action-btn {
-  flex: 1;
-  background: var(--glass-card);
+/* Coordinate Inputs Card */
+.coord-input-card {
+  background: var(--bg-glass-card);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
-  padding: 8px 12px;
-  color: #F3EFEA;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all 0.2s;
+  padding: 10px;
 }
 
-.action-btn:hover {
-  background: rgba(226, 218, 204, 0.08);
-  border-color: var(--border-hover);
-}
-
-.action-export:hover {
-  border-color: var(--earth-sand);
-  color: var(--earth-sand);
-}
-
-/* --------------------------------------------------------------------------
-   9. ZONE D: Bottom Temporal Scrubber & Nowcast Timeline
-   -------------------------------------------------------------------------- */
-.zone-d-timeline-dock {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100vw - 48px);
-  max-width: 1280px;
-  z-index: 1000;
-  background: var(--glass-primary);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-card);
-  padding: 10px 18px;
-  box-shadow: var(--shadow-hud);
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  pointer-events: auto;
-}
-
-.player-controls-group {
+.coord-inputs {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.ctrl-btn {
-  background: rgba(226, 218, 204, 0.06);
-  border: 1px solid var(--border-subtle);
-  color: #E6E0D6;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+.input-field {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.ctrl-btn:hover {
-  background: rgba(201, 168, 124, 0.18);
-  border-color: var(--earth-sand);
-  color: var(--earth-sand);
-}
-
-.play-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #C9A87C, #A47E53);
-  color: #121312;
-  font-weight: 700;
-  border: none;
-  box-shadow: 0 4px 14px rgba(201, 168, 124, 0.3);
-  cursor: pointer;
-}
-
-.play-btn:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 20px rgba(201, 168, 124, 0.45);
-}
-
-.speed-selector {
-  display: flex;
-  background: rgba(226, 218, 204, 0.06);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  padding: 2px;
-  margin-left: 4px;
-}
-
-.speed-btn {
-  background: transparent;
-  border: none;
-  color: #8C8375;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.speed-btn.active {
-  background: rgba(201, 168, 124, 0.2);
-  color: var(--earth-sand);
-}
-
-.scrubber-track-group {
+  padding: 5px 8px;
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
-.scrubber-zone-labels {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.zone-label-observed {
-  color: var(--earth-slate-blue);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.zone-label-now {
-  color: #F3EFEA;
-}
-
-.now-pill {
-  background: rgba(226, 218, 204, 0.12);
-  border: 1px solid rgba(226, 218, 204, 0.25);
-  padding: 1px 8px;
-  border-radius: var(--radius-pill);
-  font-weight: 600;
-}
-
-.zone-label-forecast {
-  color: var(--earth-terracotta);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.slider-wrapper {
-  position: relative;
-  width: 100%;
-}
-
-.timeline-range-slider {
-  width: 100%;
-  height: 6px;
-  background: linear-gradient(90deg, 
-    rgba(126, 154, 168, 0.4) 0%, 
-    rgba(217, 155, 82, 0.6) 80%, 
-    rgba(212, 106, 76, 0.8) 100%
-  );
-  border-radius: 3px;
-  outline: none;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-
-.timeline-range-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #F3EFEA;
-  border: 2px solid var(--earth-sand);
-  box-shadow: 0 0 10px var(--earth-sand-glow);
-  cursor: pointer;
-  transition: transform 0.1s;
-}
-
-.timeline-range-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.2);
-}
-
-.scrubber-meta-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.slider-time-badge {
-  font-size: 12px;
-  font-weight: 600;
-  color: #F3EFEA;
-}
-
-.slider-sub-text {
-  font-size: 11px;
-  color: #8C8375;
-}
-
-.slider-mode-tag {
-  font-family: var(--font-mono);
+.input-field label {
   font-size: 9px;
-  font-weight: 600;
-  background: rgba(201, 168, 124, 0.14);
-  border: 1px solid rgba(201, 168, 124, 0.3);
-  color: var(--earth-sand);
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  margin-right: 5px;
 }
 
-/* --------------------------------------------------------------------------
-   10. SPACEX MISSION CONTROL MODAL (Scenario 3)
-   -------------------------------------------------------------------------- */
-.hud-modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(14, 15, 14, 0.82);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
+.input-field input {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-family: var(--font-mono);
 }
 
-.hud-modal-card {
-  width: 820px;
-  max-width: 90vw;
-  background: var(--glass-elevated);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-hover);
-  border-radius: var(--radius-modal);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75), 0 0 30px rgba(201, 168, 124, 0.12);
+.btn-coord-search {
+  background: var(--bg-glass-hover);
+  border: 1px solid var(--border-prominent);
+  color: var(--windy-cyan);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-coord-search:hover {
+  background: var(--windy-cyan);
+  color: #111723;
+}
+
+/* Preset Location Chips */
+.preset-section {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  animation: modal-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 6px;
 }
 
-@keyframes modal-enter {
-  0% { transform: scale(0.95); opacity: 0; }
-  100% { transform: scale(1); opacity: 1; }
+.preset-header {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.modal-header {
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.preset-chip {
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  transition: all 0.15s ease;
+}
+
+.preset-chip:hover {
+  background: var(--bg-glass-hover);
+  color: var(--windy-cyan);
+  border-color: var(--windy-cyan);
+}
+
+/* Cloud Opacity Controller */
+.opacity-ctrl-section {
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.opacity-label-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 18px 24px;
-  border-bottom: 1px solid rgba(226, 218, 204, 0.08);
+  font-size: 10.5px;
+  color: var(--text-secondary);
 }
 
-.modal-sub {
+#lbl-cloud-opacity {
+  font-weight: 700;
+  color: var(--windy-cyan);
   font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 1px;
-  color: var(--earth-sand);
 }
 
-.modal-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #F3EFEA;
-}
-
-.modal-close-btn {
-  background: rgba(226, 218, 204, 0.08);
-  border: 1px solid var(--border-subtle);
-  color: #D6CEBE;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+.opacity-range {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
   cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
 }
 
-.modal-close-btn:hover {
-  background: rgba(212, 106, 76, 0.2);
-  border-color: var(--earth-terracotta);
-  color: var(--earth-terracotta);
+.opacity-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--windy-cyan);
+  box-shadow: 0 0 8px var(--windy-cyan-glow);
+  cursor: pointer;
+  transition: transform 0.1s ease;
 }
 
-.modal-body {
-  padding: 24px;
+.opacity-range::-webkit-slider-thumb:hover {
+  transform: scale(1.25);
+}
+
+/* Windy-Style Result Card */
+.result-card-container {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  max-height: 75vh;
-  overflow-y: auto;
 }
 
-.modal-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+.result-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 24px 14px;
+  background: var(--bg-glass-card);
+  border: 1px dashed var(--border-prominent);
+  border-radius: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-.sum-box {
-  background: rgba(18, 19, 17, 0.7);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-bento);
+.placeholder-icon {
+  font-size: 20px;
+}
+
+.rdt-alert-box {
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-prominent);
+  border-radius: 12px;
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  animation: fadeIn 0.25s ease-out;
 }
 
-.sum-lbl {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 600;
-  color: #8C8375;
-}
-
-.sum-val {
-  font-size: 14px;
-  font-weight: 600;
-  color: #F3EFEA;
-}
-
-.section-title {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  color: #D6CEBE;
-  margin-bottom: 8px;
-}
-
-.stages-bars-container {
+.alert-title-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.alert-title-row.danger {
+  background: rgba(235, 47, 6, 0.20);
+  color: #ff6b6b;
+  border: 1px solid rgba(235, 47, 6, 0.45);
+}
+
+.alert-title-row.warning {
+  background: rgba(255, 165, 2, 0.20);
+  color: #ffd32a;
+  border: 1px solid rgba(255, 165, 2, 0.45);
+}
+
+.alert-title-row.safe {
+  background: rgba(46, 213, 115, 0.18);
+  color: #7bed9f;
+  border: 1px solid rgba(46, 213, 115, 0.40);
+}
+
+.alert-title-row.notice {
+  background: rgba(0, 210, 211, 0.18);
+  color: #70a1ff;
+  border: 1px solid rgba(0, 210, 211, 0.40);
+}
+
+.alert-desc-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 2x2 Metric Cards Grid */
+.metrics-grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
 
-.stage-row {
+.metric-card {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 
-.stage-meta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-}
-
-.stage-name {
-  color: #F3EFEA;
-  font-weight: 500;
-}
-
-.stage-time {
-  font-family: var(--font-mono);
-  color: var(--earth-sand);
+.metric-card-lbl {
+  font-size: 9.5px;
+  color: var(--text-muted);
   font-weight: 600;
 }
 
-.stage-bar-bg {
-  width: 100%;
-  height: 6px;
-  background: rgba(226, 218, 204, 0.08);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.stage-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #C9A87C, #D46A4C);
-  border-radius: 3px;
-}
-
-.log-terminal {
-  background: #0E0F0E;
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  padding: 12px;
+.metric-card-val {
+  font-size: 14px;
+  font-weight: 800;
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.6;
-  max-height: 140px;
-  overflow-y: auto;
-  color: #BDB4A6;
+  color: var(--text-primary);
 }
 
-.log-line {
-  word-break: break-all;
+.metric-card-val.highlight-yellow {
+  color: var(--windy-yellow);
+}
+
+.metric-card-val.highlight-cyan {
+  color: var(--windy-cyan);
+}
+
+.cell-distance-note {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding-top: 5px;
+  border-top: 1px dashed var(--border-subtle);
+  line-height: 1.4;
+}
+
+/* =====================================================================
+   3. Map Viewport & Overlays
+===================================================================== */
+.map-viewport {
+  flex: 1;
+  position: relative;
+  height: 100%;
+  width: 100%;
+}
+
+#map {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-app);
+  z-index: 1;
+}
+
+.dark-tiles {
+  filter: contrast(110%) brightness(95%);
+}
+
+.rdt-ocean-tiles {
+  filter: contrast(112%) brightness(90%) saturate(80%);
+}
+
+.graticule-label {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  font-weight: 700;
+  pointer-events: none;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+}
+
+/* =====================================================================
+   4. Right-Side Windy Layer Menu (The Iconic Vertical Stack)
+===================================================================== */
+.windy-layer-menu {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 800;
+}
+
+.windy-layer-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-glass-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.windy-layer-btn .layer-icon {
+  font-size: 14px;
+}
+
+.windy-layer-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  border-color: var(--border-prominent);
+  transform: translateX(-3px);
+}
+
+.windy-layer-btn.active {
+  background: rgba(235, 47, 6, 0.16);
+  border-color: var(--windy-coral);
+  color: #ff6b6b;
+  box-shadow: 0 0 14px var(--windy-coral-glow);
+  border-right: 3px solid var(--windy-coral);
+}
+
+/* Smooth Cloud Footprints & Selection Highlight */
+.rdt-footprint-smooth {
+  transition: stroke 0.25s ease, fill-opacity 0.25s ease, stroke-width 0.25s ease;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  cursor: pointer;
+}
+
+.rdt-footprint-smooth:hover {
+  stroke-width: 2.2px !important;
+  stroke: #38bdf8 !important;
+  fill-opacity: 0.22 !important;
+}
+
+.rdt-footprint-selected {
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.9));
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  cursor: pointer;
+  animation: footprintPulse 2.2s infinite ease-in-out;
+}
+
+@keyframes footprintPulse {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.7)); }
+  50% { filter: drop-shadow(0 0 14px rgba(56, 189, 248, 1.0)); }
+}
+
+/* =====================================================================
+   5. Bottom Floating Windy Timeline Player Dock
+===================================================================== */
+.windy-player-dock {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 480px));
+  background: var(--bg-glass-nav);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-prominent);
+  border-radius: 30px;
+  padding: 8px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 850;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+}
+
+.player-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.player-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-glass-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+
+.player-btn:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+/* Iconic Windy Circular Play Button */
+.player-btn-main {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ff4757 0%, #eb2f06 100%);
+  color: #ffffff;
+  font-size: 14px;
+  box-shadow: 0 3px 12px var(--windy-coral-glow);
+  transition: all 0.2s ease;
+}
+
+.player-btn-main:hover {
+  filter: brightness(1.15);
+  transform: scale(1.08);
+}
+
+.player-timeline-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+}
+
+.player-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+}
+
+.player-time-badge {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.player-time-badge.live-time {
+  color: var(--windy-cyan);
+}
+
+.player-source-text {
+  color: var(--text-dim);
+  font-size: 9.5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 10px;
+}
+
+.windy-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.16);
+  outline: none;
+  cursor: pointer;
+}
+
+.windy-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid var(--windy-coral);
+  box-shadow: 0 0 10px var(--windy-coral-glow);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.windy-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+}
+
+/* =====================================================================
+   6. Bottom-Right Windy Legend & Color Scale
+===================================================================== */
+.windy-legend-stack {
+  position: absolute;
+  bottom: 20px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 800;
+}
+
+/* Rain Intensity Scale Bar */
+.windy-color-scale-card {
+  background: var(--bg-glass-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 10px;
+  width: 220px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+.scale-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.scale-unit {
+  color: var(--text-dim);
+}
+
+/* Iconic Windy Rainbow Radar Color Ramp */
+.scale-gradient-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to right,
+    rgba(0, 180, 216, 0.8) 0%,
+    rgba(46, 213, 115, 0.85) 20%,
+    rgba(255, 211, 42, 0.9) 45%,
+    rgba(255, 159, 67, 0.95) 65%,
+    rgba(255, 71, 87, 1.0) 85%,
+    rgba(155, 93, 229, 1.0) 100%
+  );
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.scale-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8.5px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* Collapsible Phase Legend */
+.app-legend {
+  background: var(--bg-glass-panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  width: 220px;
+  transition: all 0.2s ease;
+}
+
+.legend-header {
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.legend-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.legend-collapse-icon {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.legend-body {
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 9.5px;
+  color: var(--text-secondary);
+}
+
+.app-legend.collapsed .legend-body {
+  display: none;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.swatch {
+  width: 14px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.swatch-cloud {
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: linear-gradient(90deg, rgba(200, 215, 235, 0.6), rgba(150, 170, 195, 0.1));
+}
+
+.swatch-rain {
+  border: 1.5px solid #ef4444;
+  background: #22d3ee;
+}
+
+.swatch-dev {
+  border: 1.5px solid #ffa502;
+  background: #ffd32a;
+}
+
+.swatch-decay {
+  border: 1.5px dashed #1e90ff;
+  background: #93c5fd;
+}
+
+.swatch-impact {
+  border: 1.5px dashed #ef4444;
+  background: #fca5a5;
+}
+
+.swatch-arrow {
+  color: var(--windy-yellow);
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 9px;
+}
+
+/* =====================================================================
+   7. Leaflet Markers & Vectors
+===================================================================== */
+.user-rdt-marker {
+  position: relative;
+  width: 22px;
+  height: 22px;
+}
+
+.user-cross-line {
+  position: absolute;
+  background: #ff4757;
+  box-shadow: 0 0 6px rgba(255, 71, 87, 0.9);
+}
+
+.user-cross-h {
+  top: 10px; left: 0; width: 22px; height: 2px;
+}
+
+.user-cross-v {
+  top: 0; left: 10px; width: 2px; height: 22px;
+}
+
+.user-center-dot {
+  position: absolute;
+  top: 8px; left: 8px;
+  width: 6px; height: 6px;
+  background: #ffa502;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ffa502;
+}
+
+.rdt-arrow-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rdt-tooltip {
+  background: var(--bg-glass-panel) !important;
+  backdrop-filter: blur(12px) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-prominent) !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4) !important;
+  padding: 4px 8px !important;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--bg-glass-panel) !important;
+  backdrop-filter: blur(16px) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-prominent) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5) !important;
+}
+
+.leaflet-popup-tip {
+  background: var(--bg-glass-panel) !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* =====================================================================
+   8. Responsive Breakpoints
+===================================================================== */
+@media (max-width: 900px) {
+  .app-sidebar {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    z-index: 950;
+  }
+
+  .topbar-center {
+    display: none;
+  }
+
+  .windy-player-dock {
+    width: calc(100% - 32px);
+    bottom: 12px;
+  }
+
+  .windy-legend-stack {
+    bottom: 80px;
+  }
 }

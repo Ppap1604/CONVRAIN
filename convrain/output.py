@@ -80,11 +80,6 @@ OUTPUT_SCHEMA = {
                     "peak_eta": _TIME_OR_NULL, "stop_eta": _TIME_OR_NULL}},
                 "motion": {"type": "object", "properties": {
                     "speed_ms": _NUM_OR_NULL, "direction_deg": _NUM_OR_NULL}},
-                "lat_raw": _NUM_OR_NULL,
-                "lon_raw": _NUM_OR_NULL,
-                "parallax_shift_km": _NUM_OR_NULL,
-                "area_km2": _NUM_OR_NULL,
-                "core_level_k": _NUM_OR_NULL,
             },
         }},
     },
@@ -166,11 +161,6 @@ def object_record(track, feats: dict, px: dict, onset: dict | None, intensity: d
             "stop_eta": iso(it.get("stop_eta")),
         },
         "motion": {"speed_ms": _num(feats.get("speed_ms"), 1), "direction_deg": _num(feats.get("direction_deg"), 0)},
-        "lat_raw": _num(feats.get("lat"), 4),
-        "lon_raw": _num(feats.get("lon"), 4),
-        "parallax_shift_km": _num(px.get("shift_km") if "shift_km" in px else px.get("parallax_shift_km"), 2),
-        "area_km2": _num(feats.get("area_km2"), 1),
-        "core_level_k": _num(feats.get("core_level_k"), 1),
     }
 
 
@@ -179,42 +169,10 @@ def scan_document(scan_time: datetime, objects: list[dict], model_version: str) 
 
 
 def to_feature_collection(doc: dict) -> dict:
-    """แปลงเอกสารต่อ scan เป็น GeoJSON FeatureCollection มาตรฐาน (เปิดใน QGIS ได้ทันที) โดยยุบรวมคีย์ย่อยเป็น Flat properties"""
+    """แปลงเอกสารต่อ scan เป็น GeoJSON FeatureCollection มาตรฐาน (เปิดใน QGIS ได้ทันที)"""
     feats = []
     for o in doc["objects"]:
-        props = {}
-        for k, v in o.items():
-            if k == "geometry":
-                continue
-            if isinstance(v, dict):
-                for sub_k, sub_v in v.items():
-                    props[sub_k] = sub_v
-            else:
-                props[k] = v
-
-        # Convenient flat aliases for QGIS / WebGL HUD Dashboard
-        ct = o.get("cloud_top", {}) or {}
-        props["min_bt"] = ct.get("min_bt_10p4")
-        props["cooling_rate"] = ct.get("cooling_rate_10min_K")
-        props["cth_km"] = ct.get("cloud_top_height_km")
-
-        ons = o.get("onset", {}) or {}
-        props["p30"] = ons.get("p_within_30min")
-        props["p60"] = ons.get("p_within_60min")
-        props["eta_median"] = ons.get("eta_median")
-        eta_win = ons.get("eta_window")
-        props["eta_lo"] = eta_win[0] if (eta_win and len(eta_win) > 0) else None
-        props["eta_hi"] = eta_win[1] if (eta_win and len(eta_win) > 1) else None
-
-        it = o.get("intensity", {}) or {}
-        props["rain_rate"] = it.get("rain_rate_mm_hr")
-        props["peak_eta"] = it.get("peak_eta")
-        props["stop_eta"] = it.get("stop_eta")
-
-        mo = o.get("motion", {}) or {}
-        props["speed_ms"] = mo.get("speed_ms")
-        props["direction_deg"] = mo.get("direction_deg")
-
+        props = {k: v for k, v in o.items() if k != "geometry"}
         props["scan_time"] = doc["scan_time"]
         feats.append({"type": "Feature", "geometry": o["geometry"], "properties": props})
     return {"type": "FeatureCollection", "features": feats}
@@ -263,14 +221,19 @@ def scan_stamp(t: datetime) -> str:
 
 def write_scan_outputs(out_dir: str | Path, doc: dict, footprints: dict[str, list] | None,
                        timeseries: pd.DataFrame | None, write_json: bool = True,
-                       points: pd.DataFrame | None = None) -> dict[str, Path]:
+                       points: pd.DataFrame | None = None,
+                       outlook: pd.DataFrame | None = None,
+                       rainmap: dict | None = None) -> dict[str, Path]:
     """
     โครงสร้างโฟลเดอร์
         out_dir/json/objects_<stamp>.json            เอกสารต่อ scan (หัวข้อ 9.5)
         out_dir/geojson/objects_<stamp>.geojson       FeatureCollection ของจุด
         out_dir/geojson/footprints_<stamp>.geojson    polygon ของแต่ละ object
         out_dir/timeseries/date=YYYY-MM-DD/scan_<HHMM>.parquet
-        out_dir/points/date=YYYY-MM-DD/points_<HHMM>.csv   เวลาฝนเริ่ม / หนักสุด / หยุด รายจุด (ถ้ามี)
+        out_dir/points/date=YYYY-MM-DD/points_<HHMM>.csv   เวลาฝนเริ่ม / หนักสุด / หยุด ของจุดใต้เมฆที่ติดตาม (ถ้ามี)
+        out_dir/outlook/date=YYYY-MM-DD/outlook_<HHMM>.csv คำเตือน 3 ระดับ + เวลาฝนเริ่ม / หยุดพร้อมความมั่นใจ ทุกจุด (ถ้ามี)
+        out_dir/rainmap/date=YYYY-MM-DD/rainmap_<HHMM>.npz แผนที่ฝนตอนนี้ทั้งภาพ (+ rainmap/grid.npz พิกัดของกริด)
+        out_dir/geojson/rainnow_<stamp>.geojson       บริเวณที่ฝนกำลังตก (polygon บนพื้น แก้ parallax แล้ว)
     """
     out = Path(out_dir)
     t = pd.Timestamp(doc["scan_time"])
@@ -287,20 +250,51 @@ def write_scan_outputs(out_dir: str | Path, doc: dict, footprints: dict[str, lis
         timeseries.to_parquet(p, index=False)
         paths["parquet"] = p
 
-        # Daily cumulative CSV alongside Parquet
-        daily_csv = out / "timeseries" / f"timeseries_{t:%Y%m%d}.csv"
-        if not daily_csv.exists():
-            timeseries.to_csv(daily_csv, index=False)
-        else:
-            timeseries.to_csv(daily_csv, mode="a", header=False, index=False)
-        paths["timeseries_csv"] = daily_csv
-
     if points is not None and len(points):
         d = out / "points" / f"date={t:%Y-%m-%d}"
         d.mkdir(parents=True, exist_ok=True)
         p = d / f"points_{t:%H%M}.csv"
         points.to_csv(p, index=False, date_format="%Y-%m-%dT%H:%M:%SZ", float_format="%.4g")
         paths["points"] = p
+
+    if outlook is not None and len(outlook):
+        d = out / "outlook" / f"date={t:%Y-%m-%d}"
+        d.mkdir(parents=True, exist_ok=True)
+        p = d / f"outlook_{t:%H%M}.csv"
+        outlook.to_csv(p, index=False, date_format="%Y-%m-%dT%H:%M:%SZ", float_format="%.4g")
+        paths["outlook"] = p
+
+    if rainmap is not None:
+        paths.update(write_rainmap(out, rainmap, t, stamp))
+    return paths
+
+
+def write_rainmap(out: Path, rm: dict, t: pd.Timestamp, stamp: str) -> dict[str, Path]:
+    """
+    แผนที่ฝนตอนนี้
+        rainmap/grid.npz                      lat, lon (ตำแหน่งที่ดาวเทียมเห็น), lat_ground, lon_ground (ตำแหน่งบนพื้น
+                                              หลังแก้ parallax ของยอดเมฆเย็นคงที่) — เขียนครั้งเดียวต่อกริด
+        rainmap/date=YYYY-MM-DD/rainmap_HHMM.npz   rain_prob_pct (0–100, uint8), raining (bool), day_mode (bool), scan_time
+        geojson/rainnow_<stamp>.geojson       บริเวณฝน: polygon บนพื้น + area_km2, rain_prob_max / mean, mode
+    """
+    paths: dict[str, Path] = {}
+    d = out / "rainmap"
+    d.mkdir(parents=True, exist_ok=True)
+    g = d / "grid.npz"
+    if not g.exists() or np.load(g)["lat"].shape != rm["p"].shape:
+        np.savez_compressed(g, lat=np.asarray(rm["lat"], np.float32), lon=np.asarray(rm["lon"], np.float32),
+                            lat_ground=rm["lat_ground"], lon_ground=rm["lon_ground"])
+    dd = d / f"date={t:%Y-%m-%d}"
+    dd.mkdir(parents=True, exist_ok=True)
+    p = dd / f"rainmap_{t:%H%M}.npz"
+    np.savez_compressed(p, rain_prob_pct=np.clip(np.rint(rm["p"] * 100), 0, 100).astype(np.uint8),
+                        raining=np.asarray(rm["raining"], bool), day_mode=np.asarray(rm["daylit"], bool),
+                        scan_time=np.array(t.strftime("%Y-%m-%dT%H:%M:%SZ")))
+    paths["rainmap"] = p
+    (out / "geojson").mkdir(parents=True, exist_ok=True)
+    p = out / "geojson" / f"rainnow_{stamp}.geojson"
+    p.write_text(json.dumps({"type": "FeatureCollection", "features": rm.get("areas", [])}), encoding="utf-8")
+    paths["rainnow"] = p
     return paths
 
 

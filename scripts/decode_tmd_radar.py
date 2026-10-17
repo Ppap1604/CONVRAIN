@@ -6,9 +6,14 @@
         --palette data/Thai/ground/radar_phs/raw_jpeg/PHS_palette.json --out runs/radar_decoded
     → radar_<วัน>.npz: dbz[t, y, x] (NaN = นอกพื้นที่วัด, 0 = วัดได้แต่ไม่มีฝน), time_vals, lat, lon, valid
 
-วิธี: สีแต่ละพิกเซล → แถบสีที่ใกล้ที่สุดใน palette ถ้าห่าง ≤ 20 (RGB); เรขาคณิต azimuthal equidistant รอบสถานี
-(16.7765°N 100.2161°E, จุดศูนย์กลางภาพ 436.01, 391.29 px, 0.66011 km/px); ตัดพิกเซลที่มีสีใน > 60 % ของทุกภาพ
-(วงระยะ / ตัวอักษร / clutter) และระยะ < 10 km หรือ > 230 km
+วิธี:
+  - เทียบสีในปริภูมิ CIELAB (ใกล้เคียงการรับรู้สีของคน ทนต่อสีเพี้ยนจากการบีบอัด JPEG ได้ดีกว่าระยะ RGB):
+    พิกเซลเป็นเสียงสะท้อนเมื่อห่างสีของแถบ dBZ ที่ใกล้ที่สุด ≤ 20 และห่างจาก "พื้นหลังคงที่" ≥ 16
+  - พื้นหลังคงที่ = แผนที่ภูมิประเทศ / เส้นเขต / ตัวอักษรของภาพ (มัธยฐานรายพิกเซลของภาพที่มีเสียงสะท้อนน้อย)
+    ไฟล์ PHS_background_rgb.npz ข้าง palette; ไม่มี → สร้างจากภาพที่ส่งเข้ามา (มัธยฐานของ 30% ที่มีสีน้อยที่สุด)
+  - เรขาคณิต azimuthal equidistant รอบสถานี (16.7765°N 100.2161°E, จุดศูนย์กลางภาพ 436.01, 391.29 px, 0.66011 km/px);
+    ใช้ระยะ 10–230 km; ตัดพิกเซลที่เป็นเสียงสะท้อนใน > 60 % ของทุกภาพ (clutter)
+ตรวจแล้วนับพิกเซลเสียงสะท้อนได้ใกล้เคียงบันทึกของคลังภาพเอง (อัตราส่วน ~1.0)
 """
 from __future__ import annotations
 
@@ -21,8 +26,18 @@ import numpy as np
 CX, CY, KPX = 436.01, 391.29, 0.66011
 LAT0, LON0 = 16.7765, 100.2161
 PLOT = (75, 0, 800, 757)                 # กรอบพื้นที่แผนที่ในภาพ (x0, y0, x1, y1)
-TOL, STATIC = 20.0, 0.60
+PAL_TOL, BG_MIN, STATIC = 20.0, 16.0, 0.60
 LAT, LON, RES = (14.4, 19.2), (97.6, 102.8), 0.02
+
+
+def srgb_to_lab(a):
+    """sRGB (0–255) → CIELAB (D65)"""
+    a = np.asarray(a, np.float32) / 255.0
+    lin = np.where(a <= 0.04045, a / 12.92, ((a + 0.055) / 1.055) ** 2.4)
+    M = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]], np.float32)
+    xyz = lin @ M.T / np.array([0.95047, 1.0, 1.08883], np.float32)
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[..., 1] - 16, 500 * (f[..., 0] - f[..., 1]), 200 * (f[..., 1] - f[..., 2])], -1)
 
 
 def grid_pixels():
@@ -42,26 +57,45 @@ def grid_pixels():
     return lat, lon, np.clip(x, 0, 799), np.clip(y, 0, 799), ok
 
 
-def decode(path, rgb, dbz, yy, xx):
+def load_rgb(path):
     from PIL import Image
-    a = np.asarray(Image.open(path).convert("RGB"), np.float32)[yy, xx]
-    d2 = ((a[:, :, None, :] - rgb[None, None]) ** 2).sum(-1)
-    return np.where(np.sqrt(d2.min(-1)) <= TOL, dbz[d2.argmin(-1)], np.nan).astype(np.float32)
+    return np.asarray(Image.open(path).convert("RGB"), np.uint8)
+
+
+def background(files, bg_file: Path | None):
+    if bg_file is not None and bg_file.exists():
+        return np.load(bg_file)["rgb"].astype(np.float32)
+    stack = np.stack([load_rgb(f) for f in files])
+    colour = (stack.max(-1).astype(int) - stack.min(-1)).mean((1, 2))      # ภาพที่มีสีน้อย = เสียงสะท้อนน้อย
+    quiet = stack[colour <= np.quantile(colour, 0.30)]
+    return np.median(quiet, 0).astype(np.float32)
+
+
+def decode(rgb_img, pal_lab, dbz, bg_lab, yy, xx):
+    lab = srgb_to_lab(rgb_img[yy, xx].astype(np.float32))
+    dp = np.sqrt(((lab[:, :, None, :] - pal_lab[None, None]) ** 2).sum(-1))
+    dbg = np.sqrt(((lab - bg_lab) ** 2).sum(-1))
+    echo = (dp.min(-1) <= PAL_TOL) & (dbg >= BG_MIN)
+    return np.where(echo, dbz[dp.argmin(-1)], np.nan).astype(np.float32)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--jpg-dir", required=True)
     ap.add_argument("--palette", required=True)
+    ap.add_argument("--background", default=None, help="ไฟล์พื้นหลัง (ค่าเริ่มต้น: PHS_background_rgb.npz ข้าง palette)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     p = json.loads(Path(args.palette).read_text())
     rgb, dbz = np.array(p["rgb"], np.float32), np.array(p["dbz"], np.float32)
     lat, lon, x, y, ok = grid_pixels()
     files = sorted(Path(args.jpg_dir).glob("PHS_*Z.jpg"))
+    bg_file = Path(args.background) if args.background else Path(args.palette).with_name("PHS_background_rgb.npz")
+    bg_lab = srgb_to_lab(background(files, bg_file)[y, x])
+    pal_lab = srgb_to_lab(rgb)
     imgs, times = [], []
     for f in files:
-        imgs.append(decode(f, rgb, dbz, y, x))
+        imgs.append(decode(load_rgb(f), pal_lab, dbz, bg_lab, y, x))
         s = f.stem.split("_")                                              # PHS_YYYYMMDD_HHMMZ
         times.append(np.datetime64(f"{s[1][:4]}-{s[1][4:6]}-{s[1][6:]}T{s[2][:2]}:{s[2][2:4]}"))
     A = np.stack(imgs)

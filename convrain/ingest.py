@@ -21,8 +21,9 @@ import numpy as np
 EARTH_RADIUS_KM = 6371.0
 
 # ชื่อ band ของ AHI → ความยาวคลื่น (µm) เพื่อความชัดเจนในโค้ดส่วนอื่น
+VIS_BANDS = ("B01", "B02", "B03", "B04", "B05", "B06")         # ช่องแสงอาทิตย์สะท้อน (อ่านเป็นค่าสะท้อน)
 AHI_BANDS = {
-    "B03": 0.64, "B07": 3.9, "B08": 6.2, "B09": 6.9, "B10": 7.3, "B11": 8.6,
+    "B03": 0.64, "B04": 0.86, "B05": 1.6, "B07": 3.9, "B08": 6.2, "B09": 6.9, "B10": 7.3, "B11": 8.6,
     "B13": 10.4, "B14": 11.2, "B15": 12.4, "B16": 13.3,
 }
 
@@ -219,17 +220,25 @@ def read_ahi_hsd(filenames: Iterable[str | Path], cfg: dict) -> Scan:
         raise ImportError("ต้องติดตั้ง satpy เพื่ออ่านไฟล์ HSD: pip install satpy") from exc
 
     d = cfg["domain"]
-    bands = cfg["satellite"]["bands"]
-    scn = Scene(reader="ahi_hsd", filenames=[str(f) for f in filenames])
+    filenames = [str(f) for f in filenames]
+    present = lambda b: any(f"_{b}_" in Path(f).name for f in filenames)  # noqa: E731
+    # ช่องกลางวัน (satellite.day_bands) ใช้เมื่อมีไฟล์ — โหมดกลางวันของแผนที่ฝน; ไม่มี = โหมดกลางคืนตลอด
+    day = [b for b in cfg["satellite"].get("day_bands", []) if present(b)]
+    vis = [b for b in day if b in VIS_BANDS]                      # ค่าสะท้อน
+    bands = list(cfg["satellite"]["bands"]) + [b for b in day if b not in VIS_BANDS]
+    scn = Scene(reader="ahi_hsd", filenames=filenames)
     scn.load(bands, calibration="brightness_temperature")
+    if vis:
+        scn.load(vis, calibration="reflectance")
     scn = scn.crop(ll_bbox=(d["lon_min"], d["lat_min"], d["lon_max"], d["lat_max"]))
-    # band IR ทั้งหมด (B07–B16) อยู่บน grid 2 km เดียวกันอยู่แล้ว ถ้าเพิ่ม B03 (0.5 km)
-    # ให้ resample ลงมาที่ grid หยาบสุด: scn = scn.resample(scn.coarsest_area(), resampler="native")
+    if vis:                                      # B04 ละเอียด 1 km → เฉลี่ยลงกริด 2 km ของช่อง IR
+        scn = scn.resample(scn.coarsest_area(), resampler="native")
 
     lon, lat = scn["B13"].attrs["area"].get_lonlats()
     bt = {b: np.asarray(scn[b].values, dtype=np.float32) for b in bands}
+    refl = {b: np.asarray(scn[b].values, dtype=np.float32) / 100.0 for b in vis}      # % → สัดส่วน
     time = scn["B13"].attrs["start_time"]
-    scan = Scan(time=time, bt=bt, lat=lat.astype(np.float32), lon=lon.astype(np.float32))
+    scan = Scan(time=time, bt=bt, refl=refl, lat=lat.astype(np.float32), lon=lon.astype(np.float32))
     return quality_check(prepare_geometry(scan, cfg))
 
 

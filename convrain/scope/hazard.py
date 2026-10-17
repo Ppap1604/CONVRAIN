@@ -1,5 +1,5 @@
 """
-LightHazard — แบบจำลองอัตราเกิดเหตุการณ์แบบช่วงเวลา (discrete-time hazard) ที่เบา (8 ค่าคงที่ + นาฬิกา Weibull)
+LightHazard — แบบจำลองอัตราเกิดเหตุการณ์แบบช่วงเวลา (discrete-time hazard) ที่เบา (8–11 ค่าคงที่ + นาฬิกา Weibull)
 
 แบ่งอนาคตเป็นช่วง 10 นาที k = 1 … 18 (3 ชม.):
     h_k = P(เกิดในช่วง k | ยังไม่เกิด) = logistic( a0 + a1·ln k + Σ β_j·z_j + Σ γ_j·z_j·ln k )
@@ -23,11 +23,13 @@ from .clock import QCOLS, QS, FixedClock, WeibullClock
 K_STEPS = 18
 STEP_MIN = 10.0
 
+RAIN_MAP = ["rain_now", "rain_near", "rain_arrival"]
 EVENT_FORMS = {
     # ฝนเริ่ม: คอลัมน์เหนือจุดหนาขึ้น (BTD ลด) และเย็นลง → ยอดเมฆลึก / แกนเข้ามาเหนือจุด
-    "onset": {"z": ["clock_prior", "st_btd", "d_b13_10", "d_btd_10"], "tv": ["st_btd", "d_b13_10"]},
-    # ฝนหนักสุด: ยอดเมฆลึกที่สุดอยู่ใกล้จุด (กระแสอากาศขึ้นแรงสุดอยู่เหนือจุด)
-    "peak": {"z": ["clock_prior", "st_btd", "d_b13_10", "depth_6"], "tv": ["st_btd", "depth_6"]},
+    #          + แผนที่ฝนตอนนี้: ฝนอยู่ใกล้แค่ไหน และฝนฝั่งต้นลมจะมาถึงในกี่นาที
+    "onset": {"z": ["clock_prior", "st_btd", "d_b13_10", "d_btd_10"] + RAIN_MAP, "tv": ["st_btd", "d_b13_10"]},
+    # ฝนหนักสุด: ยอดเมฆลึกที่สุดอยู่ใกล้จุด (กระแสอากาศขึ้นแรงสุดอยู่เหนือจุด) + แผนที่ฝนตอนนี้
+    "peak": {"z": ["clock_prior", "st_btd", "d_b13_10", "depth_6"] + RAIN_MAP, "tv": ["st_btd", "depth_6"]},
     # ฝนหยุด: คอลัมน์อุ่นขึ้นและบางลง (แกนผ่านไป / สลาย)
     "stop": {"z": ["clock_prior", "st_btd", "warm_20", "d_btd_10"], "tv": ["warm_20", "d_btd_10"]},
 }
@@ -71,7 +73,7 @@ class LightHazard:
 
     def _zscore(self, X: pd.DataFrame, fit=False) -> np.ndarray:
         if fit:
-            self.med = X.median()
+            self.med = X.median().fillna(0.0)                       # ตัวแปรที่ไม่มีค่าเลย → 0 (ไม่มีผล)
             self.mu = X.fillna(self.med).mean()
             self.sd = X.fillna(self.med).std().replace(0, 1).fillna(1)
         return ((X.fillna(self.med) - self.mu) / self.sd).to_numpy()

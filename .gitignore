@@ -1,108 +1,13 @@
-# ==============================================================================
-# .gitignore for convrain
-# ==============================================================================
-
-# Python Cache & Bytecode
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-
-# Environments
-.venv/
-venv/
-ENV/
-env/
-.conda/
-
-# Testing & Coverage Cache
 .pytest_cache/
 .coverage
-.coverage.*
-htmlcov/
-
-# Logs
-logs/
-*.log
-*.log.*
-web_server*.log
-
-# Sensitive credentials
 .env
-.env.*
-!.env.example
-
-# Large Data, Test Datasets, Backups & Merged Scopes
-/data/
-/datasets/
-/cases/
-/tests_old_backup/
-/convrain-main-scope/
-
-# Outputs & Trained Model Weights (เฉพาะที่ root ไม่ตัด convrain/models)
+# ผลการรัน / ข้อมูล (สร้างใหม่ได้) — ระบุที่ราก เพื่อไม่ตัดแพ็กเกจ convrain/ ทิ้ง
 /outputs/
 /runs/
 /models/
 /reports/
 /nowcast/
-/CONVRAIN_OUTPUT/
-/CONVRAIN_Outputs/
-/CONVRAIN_Outputs_check/
-/CONVRAIN_Outputs_latest/
-/scratch/
-INCOMING/
-RAW/
-raw/
-incoming/
-temp/
-tmp/
-
-# Raw / Satellite / Radar / Array Formats
-*.DAT
-*.DAT.*
-*.bz2
-*.tar
-*.tar.gz
-*.gz
-*.zip
-*.7z
-*.nc
-*.nc4
-*.h5
-*.hdf
-*.hdf5
-*.grib
-*.grib2
-*.grb
-*.tif
-*.tiff
-*.geotiff
-*.parquet
-*.feather
-*.arrow
-*.jsonl
-*.npz
-*.npy
-*.joblib
-*.pkl
-*.pickle
-*.pt
-*.pth
-*.onnx
-*.tflite
-*.bin
-*.weights
-*.safetensors
-
-# OS & Editor
-.DS_Store
-Thumbs.db
-desktop.ini
-.vscode/
-.idea/
-
-# Exceptions: keep sample files
-!examples/
-!examples/*
-
-convrain_env/
+/data/scans/
+/data/radar/

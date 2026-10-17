@@ -93,7 +93,7 @@ def main() -> None:
             print(f"{res.time:%Y-%m-%d %H:%M} ข้าม ({res.errors})")
             return
         write_scan_outputs(out, res.document, res.footprints, res.timeseries, write_json=not args.no_json,
-                           points=res.points)
+                           points=res.points, outlook=res.outlook, rainmap=res.rainmap)
         if res.errors:
             print(f"{res.time:%Y-%m-%d %H:%M} validation: {res.errors[:3]}")
 

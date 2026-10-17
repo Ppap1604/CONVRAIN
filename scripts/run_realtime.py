@@ -99,7 +99,8 @@ def main() -> None:
             complete = all(b in by_band for b in bands) and \
                 (args.segments == 0 or all(len(by_band[b]) >= args.segments for b in bands))
             if complete:
-                pending.append((t, [f for b in bands for f in by_band[b]]))
+                day = [b for b in cfg["satellite"].get("day_bands", []) if b in by_band]      # ช่องกลางวัน (ถ้ามี)
+                pending.append((t, [f for b in list(bands) + day for f in by_band[b]]))
 
         for t, files in pending:
             try:
@@ -109,7 +110,7 @@ def main() -> None:
                 print(f"{t:%Y-%m-%d %H:%M} ผิดพลาด: {exc}")
                 continue
             if not res.skipped:
-                write_scan_outputs(out, res.document, res.footprints, res.timeseries, points=res.points)
+                write_scan_outputs(out, res.document, res.footprints, res.timeseries, points=res.points, outlook=res.outlook, rainmap=res.rainmap)
             pipe.save_state(state)
 
             ts = res.timeseries

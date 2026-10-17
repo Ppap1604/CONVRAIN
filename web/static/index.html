@@ -3,390 +3,239 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CONVRAIN — Precision Satellite Convective Nowcasting Platform</title>
-
-  <!-- Google Fonts: Plus Jakarta Sans, Prompt, JetBrains Mono (Earth Tone Minimalist) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <title>CONVRAIN — Convective Rain Nowcast Platform</title>
 
   <!-- Local Leaflet Vendor Assets -->
   <link rel="stylesheet" href="/static/vendor/leaflet.css">
-
-  <!-- Main Aero-Space & Glassmorphic Design System -->
+  
+  <!-- Windy-Inspired Meteorological Design System -->
   <link rel="stylesheet" href="/static/style.css">
 </head>
-<body class="deep-obsidian-theme">
+<body class="dark-theme">
 
   <!-- =================================================================
-       ZONE A: Top Telemetry & Pipeline Status Bar (SpaceX-inspired)
+       Top Navigation & Windy-Style Header Bar
   ================================================================== -->
-  <header class="zone-a-topbar">
-    <div class="telemetry-capsule" id="telemetry-bar" title="คลิกเพื่อเปิด SpaceX Mission Control Telemetry Modal">
-      <!-- Live Status Indicator -->
-      <div class="tel-item live-pulse-group">
-        <span class="live-dot pulse-green"></span>
-        <span class="tel-label text-emerald">LIVE TELEMETRY</span>
+  <header class="app-topbar">
+    <!-- Left: Windy Red Brand Pill & Sidebar Toggle -->
+    <div class="topbar-left">
+      <button id="btn-toggle-sidebar" class="windy-menu-btn" title="เปิด/ปิด แผงพยากรณ์สภาพอากาศ">
+        <span class="icon-menu">☰</span>
+      </button>
+      
+      <div class="windy-logo-pill">
+        <span class="logo-icon">🌀</span>
+        <span class="logo-text">CONVRAIN</span>
+        <span class="badge-live" id="dataset-badge">LIVE</span>
       </div>
+    </div>
 
-      <div class="tel-divider"></div>
-
-      <!-- Brand / System Title -->
-      <div class="tel-item brand-group">
-        <span class="brand-badge">CONVRAIN</span>
-        <span class="brand-sub">HUD v2.0</span>
+    <!-- Center: Operational Telemetry & Quick Info -->
+    <div class="topbar-center">
+      <div class="windy-telemetry-pill">
+        <span class="tel-item"><span class="live-dot">●</span> <span id="topbar-source">Himawari-9 AHI + Radar</span></span>
+        <span class="tel-divider">|</span>
+        <span class="tel-item">⏱ <strong id="topbar-time">15:00 น. (08:00 UTC)</strong></span>
+        <span class="tel-divider">|</span>
+        <span class="tel-item">☁️ <span id="topbar-cells">1,051 เซลล์</span></span>
       </div>
+    </div>
 
-      <div class="tel-divider"></div>
+    <!-- Right: Operational Controls -->
+    <div class="topbar-right">
+      <button id="btn-dataset-switch" class="windy-pill-btn" title="คลิกสลับระหว่างข้อมูลจริง Himawari-9 และข้อมูลจำลอง">
+        <span id="dataset-icon">🛰️</span>
+        <span id="dataset-name" class="btn-text">ข้อมูลจริง Himawari-9</span>
+      </button>
 
-      <!-- Satellite Band Info -->
-      <div class="tel-item">
-        <span class="tel-dim">SAT:</span>
-        <span class="tel-val" id="tel-sat-band">HIMAWARI-9 BAND 13 (10.4 μm)</span>
-      </div>
+      <button id="toggle-theme" class="windy-pill-btn" title="สลับโหมดมืด (Dark Mode) และโหมดสว่าง">
+        <span id="icon-theme">🌙</span>
+        <span id="lbl-theme" class="btn-text">Dark Mode</span>
+      </button>
 
-      <div class="tel-divider"></div>
-
-      <!-- Scan Time -->
-      <div class="tel-item">
-        <span class="tel-dim">SCAN:</span>
-        <span class="tel-val font-mono" id="tel-scan-time">14:20 UTC (21:20 น.)</span>
-      </div>
-
-      <div class="tel-divider"></div>
-
-      <!-- Pipeline Latency -->
-      <div class="tel-item">
-        <span class="tel-dim">LATENCY:</span>
-        <span class="tel-val font-mono text-cyan" id="tel-latency">3.37s</span>
-        <span class="micro-badge">INFO</span>
-      </div>
-
-      <div class="tel-divider"></div>
-
-      <!-- Active Cells Detected -->
-      <div class="tel-item">
-        <span class="tel-dim">ACTIVE CELLS:</span>
-        <span class="tel-val font-mono text-cyan" id="tel-active-cells">683</span>
-      </div>
-
-      <div class="tel-divider"></div>
-
-      <!-- Convective Onset Warnings -->
-      <div class="tel-item">
-        <span class="tel-dim">WARNINGS:</span>
-        <span class="tel-val font-mono text-crimson" id="tel-warnings">27</span>
-      </div>
-
-      <div class="tel-divider"></div>
-
-      <!-- View Mode Switch: Operational vs Physics -->
-      <div class="tel-item mode-switch-group">
-        <button id="btn-toggle-view-mode" class="mode-btn" title="สลับระหว่าง Operational View (เตือนภัย) และ Physics/Research View (ค่าฟิสิกส์ชั้นสูง)">
-          <span id="lbl-view-mode">Operational View</span>
-          <span class="mode-arrow">⇄</span>
-        </button>
-      </div>
+      <button id="toggle-basemap" class="windy-pill-btn" title="สลับแผนที่พื้นหลัง">
+        <span>🗺️</span>
+        <span id="lbl-basemap" class="btn-text">Dark Canvas</span>
+      </button>
     </div>
   </header>
 
   <!-- =================================================================
-       MAIN SCREEN LAYOUT (Zones B, C, E)
+       Main Layout: Sidebar + Map Canvas + Windy Overlays
   ================================================================== -->
-  <div class="hud-viewport-container">
-
-    <!-- ZONE B: Interactive WebGL Map Canvas -->
-    <main id="map" class="hud-map-canvas"></main>
-
-    <!-- Map Search & Quick Pinpoint Floating Bar -->
-    <div class="map-search-capsule">
-      <div class="search-input-group">
-        <span class="search-icon">🎯</span>
-        <input type="text" id="coord-search-input" placeholder="ป้อนพิกัด เช่น 13.7563, 100.5018 หรือเลือกเมือง" autocomplete="off">
-        <button id="btn-search-coords" class="search-btn">ล็อกเป้า</button>
-        <button id="btn-my-gps" class="gps-btn" title="ใช้พิกัด GPS ปัจจุบัน">📍 GPS</button>
-      </div>
-      <div class="preset-location-chips">
-        <button class="chip" data-lat="13.7563" data-lon="100.5018">กรุงเทพฯ</button>
-        <button class="chip" data-lat="13.9130" data-lon="100.6550">สายไหม (พหลฯ)</button>
-        <button class="chip" data-lat="13.8050" data-lon="100.5900">ลาดพร้าว / รัชดา</button>
-        <button class="chip" data-lat="16.4250" data-lon="101.1550">เพชรบูรณ์ (ฝนตก)</button>
-        <button class="chip" data-lat="18.7883" data-lon="98.9853">เชียงใหม่</button>
-        <button class="chip" data-lat="13.3611" data-lon="100.9847">ชลบุรี</button>
-      </div>
-    </div>
-
-    <!-- ZONE E: Left Floating Layer & Filter Pill -->
-    <aside class="zone-e-layer-pill" aria-label="Layer Controls">
-      <div class="layer-pill-header">
-        <span class="pill-dot"></span>
-        <span class="pill-title">HUD LAYERS</span>
-      </div>
-
-      <button id="btn-layer-ir" class="layer-pill-btn active" title="เปิด/ปิด แถบสีอุณหภูมิยอดเมฆ Himawari-9">
-        <span class="btn-icon">🌡️</span>
-        <span class="btn-label">IR Cloud Top (Tb)</span>
-      </button>
-
-      <button id="btn-layer-footprints" class="layer-pill-btn active" title="เปิด/ปิด ขอบเขตก้อนเมฆจริงบนพื้นดิน (True Ground Footprint)">
-        <span class="btn-icon">☁️</span>
-        <span class="btn-label">Ground Footprints</span>
-      </button>
-
-      <button id="btn-layer-parallax" class="layer-pill-btn active" title="เปิด/ปิด เส้นเวกเตอร์โยงตำแหน่ง Parallax Shift">
-        <span class="btn-icon">📐</span>
-        <span class="btn-label">Parallax Vectors</span>
-      </button>
-
-      <button id="btn-layer-motion" class="layer-pill-btn active" title="เปิด/ปิด เส้นทางและกรวยการเคลื่อนที่ 30-60m">
-        <span class="btn-icon">➔</span>
-        <span class="btn-label">Motion Trajectories</span>
-      </button>
-
-      <div class="pill-divider"></div>
-
-      <button id="btn-filter-warning" class="layer-pill-btn filter-btn" title="กรองแสดงเฉพาะก้อนเมฆที่ทริกเกอร์เตือนภัยฝนตก">
-        <span class="btn-icon">⚠️</span>
-        <span class="btn-label">Warning Cells Only</span>
-      </button>
-
-      <button id="btn-compare-parallax" class="layer-pill-btn special-btn" title="โหมดเปรียบเทียบ: เงาดาวเทียมดิบ (Dashed) vs พื้นดินจริง (Solid Glow)">
-        <span class="btn-icon">🔄</span>
-        <span class="btn-label">Compare Parallax</span>
-      </button>
-    </aside>
-
-    <!-- Convective Color Ramp & Status Legend (Bottom Right) -->
-    <div class="hud-legend-card">
-      <div class="legend-header-row">
-        <span class="legend-hdr-title">HIMAWARI-9 IR SPECTRUM (Tb)</span>
-        <span class="legend-tag">K</span>
-      </div>
-      <div class="legend-bar-container">
-        <div class="legend-bar"></div>
-        <div class="legend-labels">
-          <span>&gt;250K</span>
-          <span>240K</span>
-          <span>230K</span>
-          <span>210K</span>
-          <span>&lt;200K (OT)</span>
+  <div class="app-main-layout">
+    
+    <!-- Left Collapsible Windy Weather Detail Panel -->
+    <aside id="app-sidebar" class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title-group">
+          <span class="sidebar-title">📍 พยากรณ์ฝนรายพิกัด</span>
+          <span class="sidebar-subtitle" id="gps-status-lbl">คลิกบนแผนที่หรือปักหมุด</span>
         </div>
-      </div>
-      <div class="legend-sub-row">
-        <span class="dot dot-cyan"></span> <span>ปกติ / พัฒนาตัว</span>
-        <span class="dot dot-amber"></span> <span>เฝ้าระวัง</span>
-        <span class="dot dot-crimson"></span> <span>เตือนฝนตกทันที</span>
-      </div>
-    </div>
-
-    <!-- ZONE C: Right-Hand Precision Point Forecast Inspector Drawer -->
-    <aside id="inspector-drawer" class="zone-c-inspector" aria-label="Point Forecast Inspector">
-      <!-- Drawer Header Bar -->
-      <div class="drawer-header">
-        <div class="drawer-title-group">
-          <span class="drawer-tag">PRECISION POINT FORECAST</span>
-          <span class="drawer-coord-lbl" id="insp-coord-val">LAT: 13.7563 | LON: 100.5018</span>
-        </div>
-        <button id="btn-close-inspector" class="drawer-close-btn" title="ปิดแผงตรวจวัด">✕</button>
+        <button id="btn-close-sidebar" class="sidebar-close-btn" title="ย่อแถบข้าง">✕</button>
       </div>
 
-      <div class="drawer-body">
-        <!-- 1. Hero Countdown Card -->
-        <div class="bento-hero-card" id="insp-hero-card">
-          <div class="hero-status-badge-row">
-            <span class="status-pill status-warning" id="insp-status-badge">RAIN ONSET WARNING</span>
-            <span class="confidence-text" id="insp-conf-badge">Confidence: 88%</span>
-          </div>
-          <h2 class="hero-headline" id="insp-headline">คาดการณ์ฝนเริ่มตกในอีก 25 นาที (ETA 14:45 UTC)</h2>
-          <div class="confidence-progress-bar">
-            <div class="confidence-fill" id="insp-conf-bar" style="width: 88%;"></div>
-          </div>
-          <div class="hero-eta-sub" id="insp-eta-sub">เวลาท้องถิ่นไทย: 21:45 น. | ระยะห่างจากแกนเมฆ: 12.4 กม.</div>
-        </div>
+      <div class="sidebar-content">
+        <!-- GPS Quick Target Button -->
+        <button id="btn-gps" class="btn-windy-gps">
+          <span class="gps-icon">📍</span>
+          <span class="gps-text">ดึงพิกัด GPS ตำแหน่งปัจจุบัน</span>
+        </button>
 
-        <!-- 2. Parallax & Tracking Badge -->
-        <div class="parallax-badge-card">
-          <div class="badge-icon">🛰️ ➔ 🎯</div>
-          <div class="badge-content">
-            <div class="badge-id-row">
-              <span class="badge-track-id" id="insp-track-id">Track ID: #CR-20261014-089</span>
-              <span class="badge-corrected-tag">Parallax Shift Corrected</span>
+        <!-- Coordinates Search Input Card -->
+        <div class="coord-input-card">
+          <div class="coord-inputs">
+            <div class="input-field">
+              <label for="input-lat">LAT</label>
+              <input type="number" id="input-lat" placeholder="13.7563" step="0.0001" value="13.5407">
             </div>
-            <div class="badge-shift-desc" id="insp-shift-desc">
-              ปรับแก้พิกัดตกกระทบพื้นดิน: <strong>18.8 km SW</strong> (True Ground Footprint)
+            <div class="input-field">
+              <label for="input-lon">LON</label>
+              <input type="number" id="input-lon" placeholder="100.5018" step="0.0001" value="100.4041">
             </div>
+            <button id="btn-check-coords" class="btn-coord-search" title="คำนวณพิกัด">ตรวจ</button>
           </div>
         </div>
 
-        <!-- 3. Apple Bento Grid Metrics (4 Cards) -->
-        <div class="apple-bento-grid">
-          <!-- Card 1: Cloud-Top Temp -->
-          <div class="bento-card">
-            <div class="card-label">CLOUD-TOP TEMP (Tb Min)</div>
-            <div class="card-value-row">
-              <span class="card-main-val font-mono" id="insp-tb-min">204.5 K</span>
-              <span class="card-sub-val font-mono" id="insp-tb-c">(-68.6 °C)</span>
-            </div>
-            <div class="card-trend text-cyan">↓ แนวโน้มยอดเมฆเย็นจัดต่อเนื่อง</div>
-          </div>
-
-          <!-- Card 2: Cooling Rate (dTb/dt) -->
-          <div class="bento-card">
-            <div class="card-label">COOLING RATE (dTb/dt)</div>
-            <div class="card-value-row">
-              <span class="card-main-val font-mono text-crimson" id="insp-cooling-rate">-1.8 K/min</span>
-            </div>
-            <div class="card-trend text-crimson">⚡ Strong Updraft (ลมพัดขึ้นรุนแรง)</div>
-          </div>
-
-          <!-- Card 3: Area Expansion -->
-          <div class="bento-card">
-            <div class="card-label">AREA EXPANSION</div>
-            <div class="card-value-row">
-              <span class="card-main-val font-mono text-amber" id="insp-area-growth">+145 km²</span>
-              <span class="card-sub-val">/10m</span>
-            </div>
-            <div class="card-trend text-amber">พื้นที่เมฆรวม: <span id="insp-area-total">1,240 km²</span></div>
-          </div>
-
-          <!-- Card 4: Cell Velocity -->
-          <div class="bento-card">
-            <div class="card-label">CELL VELOCITY (ADVECTION)</div>
-            <div class="card-value-row">
-              <span class="card-main-val font-mono text-cyan" id="insp-velocity">32 km/h</span>
-              <span class="card-sub-val" id="insp-direction">➔ ENE</span>
-            </div>
-            <div class="card-trend">ทิศทาง: <span id="insp-dir-deg">68.8° (ตะวันออกเฉียงเหนือ)</span></div>
+        <!-- Quick Location Chips -->
+        <div class="preset-section">
+          <div class="preset-header">พิกัดยอดนิยม:</div>
+          <div class="preset-chips">
+            <button class="preset-chip" data-lat="13.7563" data-lon="100.5018">กรุงเทพฯ</button>
+            <button class="preset-chip" data-lat="13.5407" data-lon="100.4041">สมุทรปราการ</button>
+            <button class="preset-chip" data-lat="13.3611" data-lon="100.9847">ชลบุรี</button>
+            <button class="preset-chip" data-lat="16.8467" data-lon="101.5753">เพชรบูรณ์ (ฝนตก)</button>
+            <button class="preset-chip" data-lat="13.2267" data-lon="99.2093">เพชรบุรี (ฝนตก)</button>
+            <button class="preset-chip" data-lat="18.7883" data-lon="98.9853">เชียงใหม่</button>
           </div>
         </div>
 
-        <!-- 4. Micro-Timeseries Chart -->
-        <div class="micro-chart-card">
-          <div class="chart-header-row">
-            <span class="chart-title">MICRO-TIMESERIES EVOLUTION (Tb vs Onset Probability)</span>
-            <div class="chart-legend-row">
-              <span class="legend-line line-tb"></span> <span>Tb Min (K)</span>
-              <span class="legend-line line-prob"></span> <span>Onset Prob (%)</span>
-            </div>
+        <!-- Cloud Opacity Controller (Windy Style) -->
+        <div class="opacity-ctrl-section">
+          <div class="opacity-label-row">
+            <span>☁️ ความโปร่งแสงเมฆ (Cloud Opacity):</span>
+            <span id="lbl-cloud-opacity">30%</span>
           </div>
-          <div class="chart-canvas-wrapper">
-            <svg id="micro-chart-svg" class="micro-chart-svg" viewBox="0 0 380 140" preserveAspectRatio="none">
-              <!-- Grid lines & content rendered dynamically by app.js -->
-            </svg>
-            <div id="chart-tooltip" class="chart-tooltip hidden"></div>
-          </div>
-          <div class="chart-footer-row">
-            <span id="chart-time-start">13:50</span>
-            <span class="threshold-marker">-- เกณฑ์เตือน Onset Risk &gt; 50% --</span>
-            <span id="chart-time-end">14:20</span>
-          </div>
+          <input type="range" id="slider-cloud-opacity" class="opacity-range" min="10" max="80" value="30">
         </div>
 
-        <!-- 5. Action Buttons -->
-        <div class="drawer-actions-row">
-          <button id="btn-export-csv" class="action-btn action-export">
-            <span>📥 Export CSV</span>
-          </button>
-          <button id="btn-track-log" class="action-btn action-log">
-            <span>📜 Track Life-Log</span>
-          </button>
+        <!-- Dynamic Rain Forecast Alert Card -->
+        <div id="rain-result-card" class="result-card-container">
+          <div class="result-placeholder">
+            <span class="placeholder-icon">👆</span>
+            <span>คลิกบนแผนที่ หรือกดปุ่ม GPS ด้านบน เพื่อดูเวลาเริ่มตกและทิศทางลมที่เมฆกำลังพัดมา</span>
+          </div>
         </div>
       </div>
     </aside>
 
-  </div>
+    <!-- Map Viewport Container -->
+    <div id="map-container" class="map-viewport">
+      <div id="map"></div>
 
-  <!-- =================================================================
-       ZONE D: Bottom Temporal Scrubber & Nowcast Timeline (Windy + Apple)
-  ================================================================== -->
-  <footer class="zone-d-timeline-dock">
-    <div class="player-controls-group">
-      <button id="btn-timeline-prev" class="ctrl-btn" title="ย้อนกลับ 1 รอบเวลา (10 นาที)">⏮</button>
-      <button id="btn-timeline-play" class="ctrl-btn play-btn" title="เล่นภาพเคลื่อนไหว">▶</button>
-      <button id="btn-timeline-next" class="ctrl-btn" title="ไปข้างหน้า 1 รอบเวลา (10 นาที)">⏭</button>
-      <div class="speed-selector">
-        <button class="speed-btn active" data-speed="1">1x</button>
-        <button class="speed-btn" data-speed="2">2x</button>
-        <button class="speed-btn" data-speed="5">5x</button>
+      <!-- Right-Side Floating Windy Layer Menu (The Iconic Layer Stack) -->
+      <nav class="windy-layer-menu" aria-label="Layer Controls">
+        <button id="toggle-smooth-clouds" class="windy-layer-btn active" title="สลับโหมดเมฆธรรมชาติโค้งมน (Smooth) / กรอบวิเคราะห์ (Raw)">
+          <span class="layer-icon">✨</span>
+          <span class="layer-label">เมฆธรรมชาติ (Smooth)</span>
+        </button>
+
+        <button id="toggle-sat-clouds" class="windy-layer-btn active" title="เปิด/ปิด เมฆดาวเทียม">
+          <span class="layer-icon">🛰️</span>
+          <span class="layer-label">ดาวเทียม (Clouds)</span>
+        </button>
+
+        <button id="toggle-footprints" class="windy-layer-btn active" title="เปิด/ปิด กลุ่มฝนคอนเวกทีฟ">
+          <span class="layer-icon">🌧️</span>
+          <span class="layer-label">เรดาร์ฝน (Rain Cells)</span>
+        </button>
+
+        <button id="toggle-trajectories" class="windy-layer-btn active" title="เปิด/ปิด ทิศทางลมและการเคลื่อนตัว">
+          <span class="layer-icon">➔</span>
+          <span class="layer-label">ทิศทางลม/เมฆ (Motion)</span>
+        </button>
+
+        <button id="toggle-impact-zones" class="windy-layer-btn active" title="เปิด/ปิด จุดคาดการณ์ฝนตก">
+          <span class="layer-icon">🎯</span>
+          <span class="layer-label">จุดคาดฝนตก (Impacts)</span>
+        </button>
+
+        <button id="toggle-graticule" class="windy-layer-btn active" title="เปิด/ปิด เส้นพิกัดภูมิศาสตร์">
+          <span class="layer-icon">🌐</span>
+          <span class="layer-label">เส้นพิกัด (Graticule)</span>
+        </button>
+      </nav>
+
+      <!-- Bottom-Right Windy Color Scale & Legend -->
+      <div class="windy-legend-stack">
+        <!-- Collapsible Convective Phase Legend -->
+        <div id="legend-panel" class="app-legend collapsed">
+          <div class="legend-header" id="btn-toggle-legend">
+            <span class="legend-title">RDT-CW CONVECTIVE PHASES</span>
+            <span class="legend-collapse-icon" id="icon-legend-collapse">+</span>
+          </div>
+          <div class="legend-body" id="legend-body">
+            <div class="legend-row">
+              <div class="swatch swatch-cloud"></div>
+              <span>เงาเมฆดาวเทียม (Satellite Cloud Deck)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-rain"></div>
+              <span>ฝนตกแล้ว (Mature / Active Rain)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-dev"></div>
+              <span>กำลังพัฒนาตัว (Developing / Triggering)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-decay"></div>
+              <span>กำลังสลายตัว (Decaying)</span>
+            </div>
+            <div class="legend-row">
+              <div class="swatch swatch-impact"></div>
+              <span>พื้นที่คาดการณ์ตก (Projected Landfall)</span>
+            </div>
+            <div class="legend-row">
+              <span class="swatch-arrow" id="legend-arrow-icon">➔</span>
+              <span>ทิศทางการเคลื่อนที่ (Motion Vector)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Windy Rain Intensity Scale Bar -->
+        <div class="windy-color-scale-card">
+          <div class="scale-header">
+            <span>ฝน (มม./ชม.)</span>
+            <span class="scale-unit">Rain Rate (mm/h)</span>
+          </div>
+          <div class="scale-gradient-bar"></div>
+          <div class="scale-ticks">
+            <span>0</span>
+            <span>0.5</span>
+            <span>1</span>
+            <span>2.5</span>
+            <span>5</span>
+            <span>10</span>
+            <span>20+</span>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="scrubber-track-group">
-      <div class="scrubber-zone-labels">
-        <div class="zone-label-observed">
-          <span class="label-dot dot-cyan"></span>
-          <span>OBSERVED HIMAWARI-9 (PAST 3H)</span>
-        </div>
-        <div class="zone-label-now">
-          <span class="now-pill" id="lbl-now-marker">NOW [14:20 UTC]</span>
-        </div>
-        <div class="zone-label-forecast">
-          <span class="label-dot dot-crimson"></span>
-          <span>NOWCAST FORECAST (+60M)</span>
-        </div>
-      </div>
-
-      <div class="slider-wrapper">
-        <input type="range" id="timeline-scrubber" class="timeline-range-slider" min="0" max="29" value="24" step="1">
-        <div class="slider-ticks" id="slider-ticks-container"></div>
-      </div>
-
-      <div class="scrubber-meta-row">
-        <span id="slider-stamp-display" class="slider-time-badge font-mono">14:20 UTC (21:20 น.)</span>
-        <span id="slider-step-desc" class="slider-sub-text">สแกนจริงจากดาวเทียม Himawari-9 รอบล่าสุด</span>
-        <span id="slider-mode-badge" class="slider-mode-tag">REALTIME SCAN</span>
-      </div>
-    </div>
-  </footer>
-
-  <!-- =================================================================
-       SPACEX MISSION CONTROL TELEMETRY MODAL (Scenario 3)
-  ================================================================== -->
-  <div id="mission-control-modal" class="hud-modal-backdrop hidden">
-    <div class="hud-modal-card">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <span class="modal-sub">SPACEX MISSION CONTROL TELEMETRY</span>
-          <h3 class="modal-title">CONVRAIN PIPELINE STAGE LATENCY &amp; HEALTH</h3>
-        </div>
-        <button id="btn-close-modal" class="modal-close-btn">✕</button>
-      </div>
-
-      <div class="modal-body">
-        <div class="modal-summary-grid">
-          <div class="sum-box">
-            <span class="sum-lbl">TOTAL PIPELINE LATENCY</span>
-            <span class="sum-val font-mono text-cyan" id="modal-total-latency">3.37s (3,372 ms)</span>
-          </div>
-          <div class="sum-box">
-            <span class="sum-lbl">ACTIVE CONVECTIVE TRACKS</span>
-            <span class="sum-val font-mono text-emerald" id="modal-active-tracks">683 Cells</span>
-          </div>
-          <div class="sum-box">
-            <span class="sum-lbl">IMMINENT RAIN ONSET WARNINGS</span>
-            <span class="sum-val font-mono text-crimson" id="modal-onset-warnings">27 Warnings</span>
-          </div>
-          <div class="sum-box">
-            <span class="sum-lbl">DOMAIN BOUNDARY BUFFER</span>
-            <span class="sum-val font-mono text-amber" id="modal-boundary-status">OK (Buffer Active)</span>
-          </div>
+      <!-- Bottom Floating Windy Timeline Player Dock -->
+      <div class="windy-player-dock">
+        <div class="player-controls">
+          <button id="btn-prev" class="player-btn" title="ย้อนกลับ 1 รอบเวลา">⏮</button>
+          <button id="btn-play" class="player-btn-main" title="เล่นภาพเคลื่อนไหว">▶</button>
+          <button id="btn-next" class="player-btn" title="ไปข้างหน้า 1 รอบเวลา">⏭</button>
         </div>
 
-        <!-- Stage 1-6 Latency Breakdown Bar Chart -->
-        <div class="modal-stages-section">
-          <div class="section-title">STAGE 1-6 EXECUTION BREAKDOWN (monitor_20261014.csv)</div>
-          <div class="stages-bars-container" id="stages-bars-container">
-            <!-- Populated dynamically by app.js -->
+        <div class="player-timeline-body">
+          <div class="player-meta-row">
+            <span id="slider-start-lbl" class="player-time-badge">13:00 น. (06:00 UTC)</span>
+            <span id="slider-sub-lbl" class="player-source-text">HIMAWARI-8/9 AHI + THAILAND RADAR (28 ก.ย. 2026)</span>
+            <span id="slider-end-lbl" class="player-time-badge live-time">15:00 น. (08:00 UTC)</span>
           </div>
-        </div>
-
-        <!-- Domain Boundary Buffer Warning Log -->
-        <div class="modal-log-section">
-          <div class="section-title">DOMAIN BOUNDARY BUFFER LOG (OUT-OF-DOMAIN CELLS)</div>
-          <div class="log-terminal" id="boundary-log-terminal">
-            <div class="log-line text-cyan">[SYSTEM] Ingesting Himawari-9 Full Disk Segment S04...</div>
-            <div class="log-line text-emerald">[PIPELINE] Parallax Geometry &amp; Optical Flow Engines Online.</div>
-          </div>
+          <input type="range" id="timeline-slider" class="windy-slider" min="0" max="0" value="0">
         </div>
       </div>
     </div>
@@ -395,7 +244,8 @@
   <!-- Local Leaflet Vendor JS -->
   <script src="/static/vendor/leaflet.js"></script>
 
-  <!-- Application Frontend Controller -->
+  <!-- Application Logic -->
   <script src="/static/app.js"></script>
+
 </body>
 </html>

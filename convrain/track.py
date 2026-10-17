@@ -35,24 +35,20 @@ class KalmanCV:
     ถ้าคำนวณ ΔBT/Δt จากแค่ 2 ภาพค่าจะแกว่งมาก (เอกสาร หัวข้อ 12 ข้อ 2)
     """
 
-    def __init__(self, x0: float, q: float, r: float, p0_rate: float = 25.0, init_rate: float = 0.0):
+    def __init__(self, x0: float, q: float, r: float, p0_rate: float = 25.0):
         self.q, self.r = float(q), float(r)
-        self.x = np.array([x0, init_rate], dtype=float)
+        self.x = np.array([x0, 0.0], dtype=float)
         self.P = np.diag([r, p0_rate]).astype(float)
         self.n_updates = 1
 
-    def _predict(self, dt: float, q_scale: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    def _predict(self, dt: float) -> tuple[np.ndarray, np.ndarray]:
         F = np.array([[1.0, dt], [0.0, 1.0]])
-        Q = (self.q * q_scale) * np.array([[dt**3 / 3, dt**2 / 2], [dt**2 / 2, dt]])
+        Q = self.q * np.array([[dt**3 / 3, dt**2 / 2], [dt**2 / 2, dt]])
         return F @ self.x, F @ self.P @ F.T + Q
 
     def update(self, z: float, dt: float) -> None:
-        """dt ในหน่วย "ช่วง 10 นาที" (1.0 = scan ปกติ, 2.0 = ข้ามไป 1 scan) พร้อม Adaptive Kalman Gain สำหรับ Explosive Convection"""
-        pred_val = self.x[0] + self.x[1] * dt
-        diff = abs(z - pred_val)
-        # ขยาย Process Noise เมื่ออัตราการเปลี่ยนแปลงรวดเร็วจัด (diff > 5.0 K)
-        q_scale = 1.0 + (diff / 5.0) ** 2 if diff > 5.0 else 1.0
-        x, P = self._predict(dt, q_scale=q_scale)
+        """dt ในหน่วย "ช่วง 10 นาที" (1.0 = scan ปกติ, 2.0 = ข้ามไป 1 scan)"""
+        x, P = self._predict(dt)
         S = P[0, 0] + self.r
         K = P[:, 0] / S
         x = x + K * (z - x[0])
@@ -183,8 +179,7 @@ class Tracker:
     # -----------------------------------------------------------------
     # สร้าง track ใหม่
     # -----------------------------------------------------------------
-    def _new_track(self, obj: DetectedObject, time: datetime, parent: str | None = None,
-                   init_rate: float = 0.0) -> Track:
+    def _new_track(self, obj: DetectedObject, time: datetime, parent: str | None = None) -> Track:
         k = self.cfg["kalman"]
         tid = f"obj_{time:%Y%m%d_%H%M}_{next(self._counter):05d}"
         r0, c0 = obj.centroid_rc
@@ -192,7 +187,7 @@ class Tracker:
         r_pos = float(k.get("r_pos", 1.0))
         t = Track(
             track_id=tid, birth_time=time, last_time=time, obj=obj, parent_id=parent,
-            kf_bt=KalmanCV(obj.cold_mean_bt, k["q_bt"], k["r_bt"], init_rate=init_rate),
+            kf_bt=KalmanCV(obj.cold_mean_bt, k["q_bt"], k["r_bt"]),
             kf_area=KalmanCV(np.log(max(obj.area_km2, 1e-3)), k["q_area"], k["r_area"], p0_rate=0.25),
             kf_pos=KinematicEKF(r0, c0, q_pos=q_pos, r_pos=r_pos),
             rows=obj.rows, cols=obj.cols,
@@ -209,8 +204,7 @@ class Tracker:
     # =================================================================
     # [ขั้น 3] ฟังก์ชันหลัก
     # =================================================================
-    def update(self, det, motion: MotionField | None, time: datetime, dt_min: float = 10.0,
-               prev_ir: np.ndarray | None = None) -> TrackUpdate:
+    def update(self, det, motion: MotionField | None, time: datetime, dt_min: float = 10.0) -> TrackUpdate:
         c = self.cfg
         ny, nx = det.labels.shape
         self.shape = (ny, nx)
@@ -317,33 +311,11 @@ class Tracker:
             if k in matched_obj:
                 continue
             parent = None
-            parent_track = None
             if P:
                 best_i = int(np.argmax(overlap[:, k]))
                 if overlap[best_i, k] >= c["min_overlap"]:
-                    parent_track = prev[best_i]
-                    parent = parent_track.track_id
-
-            init_cooling_rate = 0.0
-            history_inherited = []
-            if parent_track is not None:
-                # [Phase 2] Split State Inheritance: สืบทอดอัตราการเย็นตัวและประวัติจาก parent
-                init_cooling_rate = parent_track.kf_bt.rate
-                history_inherited = list(parent_track.history)
-            elif prev_ir is not None and motion is not None and o.rows.size > 0:
-                # [Phase 2] Optical-Flow Back-Sampling สำหรับก้อนเมฆเกิดใหม่
-                try:
-                    dv, du = motion.displacement(o.rows, o.cols, dt_min)
-                    r_prev = np.clip(np.rint(o.rows - dv).astype(int), 0, ny - 1)
-                    c_prev = np.clip(np.rint(o.cols - du).astype(int), 0, nx - 1)
-                    prev_cold_bt = float(np.percentile(prev_ir[r_prev, c_prev], 10))
-                    init_cooling_rate = float(o.cold_mean_bt - prev_cold_bt)
-                except Exception:
-                    init_cooling_rate = 0.0
-
-            t = self._new_track(o, time, parent, init_rate=init_cooling_rate)
-            if history_inherited:
-                t.history = history_inherited
+                    parent = prev[best_i].track_id
+            t = self._new_track(o, time, parent)
             self.tracks[t.track_id] = t
             observed.append(t)
             births.append(t)

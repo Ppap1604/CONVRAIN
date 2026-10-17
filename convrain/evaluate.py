@@ -75,11 +75,10 @@ def object_scores(df: pd.DataFrame, prob_col: str = "p30", horizon_min: float = 
     pod = hits / (hits + misses) if hits + misses else np.nan
     far = fas / (hits + fas) if hits + fas else np.nan
     csi = hits / (hits + misses + fas) if hits + misses + fas else np.nan
-    for_rate = misses / (misses + cns) if (misses + cns) else np.nan
     errs_a = np.array(errs, float)
     return {
         "hits": hits, "misses": misses, "false_alarms": fas, "correct_negatives": cns,
-        "POD": pod, "FAR": far, "CSI": csi, "FOR": for_rate,
+        "POD": pod, "FAR": far, "CSI": csi,
         "onset_MAE_min": float(np.mean(np.abs(errs_a))) if errs_a.size else np.nan,
         "onset_bias_min": float(np.mean(errs_a)) if errs_a.size else np.nan,
         "window_coverage": float(np.mean(covered)) if covered else np.nan,
@@ -161,31 +160,11 @@ def stratified(df: pd.DataFrame, by: str, threshold: float = 0.5) -> pd.DataFram
 
 
 def best_threshold(df: pd.DataFrame, prob_col: str = "p30", horizon_min: float = 30.0,
-                   grid=np.arange(0.1, 0.91, 0.05),
-                   min_pod: float | None = 0.50,
-                   max_for: float | None = 0.09) -> tuple[float, float]:
-    """
-    เลือก threshold คำเตือนที่ให้ CSI สูงสุดบนชุด validation (หัวข้อ 8.4)
-    ภายใต้เงื่อนไขบังคับ POD >= min_pod และ FOR <= max_for (ถ้ามี)
-    หากไม่มี threshold ใดที่ผ่านทั้งสองเงื่อนไข จะ fallback หาจุดที่ให้ CSI สูงสุดโดยไม่มีเงื่อนไข
-    """
-    best_constrained = (0.5, -1.0)
-    best_unconstrained = (0.5, -1.0)
+                   grid=np.arange(0.1, 0.91, 0.05)) -> tuple[float, float]:
+    """เลือก threshold คำเตือนที่ให้ CSI สูงสุดบนชุด validation (หัวข้อ 8.4)"""
+    best = (0.5, -1.0)
     for thr in grid:
-        scores = object_scores(df, prob_col, horizon_min, float(thr))
-        csi = scores["CSI"]
-        pod = scores["POD"]
-        for_val = scores.get("FOR", np.nan)
-        if not np.isfinite(csi):
-            continue
-        if csi > best_unconstrained[1]:
-            best_unconstrained = (float(thr), float(csi))
-
-        # Check constraints
-        pod_ok = (min_pod is None) or (np.isfinite(pod) and pod >= min_pod)
-        for_ok = (max_for is None) or (np.isnan(for_val) or for_val <= max_for)
-        if pod_ok and for_ok and csi > best_constrained[1]:
-            best_constrained = (float(thr), float(csi))
-
-    return best_constrained if best_constrained[1] > -1.0 else best_unconstrained
-
+        csi = object_scores(df, prob_col, horizon_min, float(thr))["CSI"]
+        if np.isfinite(csi) and csi > best[1]:
+            best = (float(thr), float(csi))
+    return best

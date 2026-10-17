@@ -94,15 +94,7 @@ class LineageBook:
             return None
         r, c, tb = r[foot], c[foot], tb[foot]
         core = tb < tc["core_k"]
-        rate = tr.kf_bt.rate if hasattr(tr, "kf_bt") else 0.0
-        # [Phase 2 & Spec] Fast-Track Bypass สำหรับพายุรุนแรงที่เย็นตัวเร็วจัด (Explosive Convection) หรือเมฆฝนอุ่น
-        is_fast_track = (rate <= -1.5 and foot.sum() >= tc["core_min_px"])
-        if hasattr(tr, "kf_bt") and getattr(tr, "n_scans", 1) == 1:
-            if (tb.size and float(tb.min()) < 245.0) or rate < -4.0:
-                is_fast_track = True
-        effective_core = core if core.sum() >= tc["core_min_px"] else (tb <= np.percentile(tb, 25)) if is_fast_track else core
-
-        if b.t0 is None and (core.sum() >= tc["core_min_px"] or (is_fast_track and foot.sum() >= tc["core_min_px"])):
+        if b.t0 is None and core.sum() >= tc["core_min_px"]:
             b.t0 = scan.time
             b.t0_censored = bool(scan.time == b.first_time and not b.has_parent)
         T_p5 = float(np.percentile(tb, 5))
@@ -111,11 +103,10 @@ class LineageBook:
         lat_c, lon_c = float(lat_px.mean()), float(lon_px.mean())
         saz = float(scan.sat_zenith[int(round(r.mean())), int(round(c.mean()))])
         lat_s, lon_s, _ = parallax_correct(lat_c, lon_c, T_p5, saz)
-        core_used = core if core.any() else effective_core
         st = LineageState(track_id=tr.track_id, t0=b.t0, t0_censored=b.t0_censored, n_px=int(foot.sum()),
-                          core_n_px=int(core_used.sum()), T_p5=T_p5, lat_s=float(lat_s), lon_s=float(lon_s))
-        if core_used.any():
-            clat, clon = float(lat_px[core_used].mean()), float(lon_px[core_used].mean())
+                          core_n_px=int(core.sum()), T_p5=T_p5, lat_s=float(lat_s), lon_s=float(lon_s))
+        if core.any():
+            clat, clon = float(lat_px[core].mean()), float(lon_px[core].mean())
             st.core_lat_s, st.core_lon_s = clat + (lat_s - lat_c), clon + (lon_s - lon_c)
-            st.core_sxx, st.core_syy, st.core_sxy = moments(lat_px[core_used], lon_px[core_used], clat, clon)
+            st.core_sxx, st.core_syy, st.core_sxy = moments(lat_px[core], lon_px[core], clat, clon)
         return st

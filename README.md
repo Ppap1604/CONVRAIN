@@ -1,164 +1,353 @@
-# convrain
+# convrain — พยากรณ์ฝนระยะสั้นจากดาวเทียม Himawari
 
-โค้ดของระบบตรวจจับและพยากรณ์เวลาฝนเริ่ม / หนักสุด / หยุด ของฝน convective จากดาวเทียม Himawari อย่างเดียว
-เขียนตามเอกสาร **Satellite-only Convective Rain Onset Workflow** (ขั้น 0–6 = หัวข้อ 3–9, แผนพัฒนา = หัวข้อ 13–18)
-ส่วนทำนายเวลา (ขั้น 5) อยู่ที่ `convrain/scope/` — วิธีทำงานและสมการอยู่ใน `convrain/scope/README.md`
+**convrain** บอกว่า *ตอนนี้ฝนตกตรงไหน*, *ฝนจะมาถึงจุดของคุณไหม*, และ *ฝนจะเริ่ม / หยุดกี่โมง พร้อมความมั่นใจ*
+จากภาพดาวเทียม Himawari อย่างเดียว — ไม่ต้องใช้เรดาร์ มาตรวัดฝน หรือแบบจำลองพยากรณ์อากาศขณะใช้งาน
+เหมาะกับพื้นที่ที่เรดาร์ไม่ครอบคลุม และรันได้บนคอมพิวเตอร์ทั่วไป (ไม่ถึง 1 วินาทีต่อภาพ)
 
-> **สถานะ:** โค้ดทุกส่วนทดสอบกับข้อมูลจำลอง (unit test + demo ตั้งแต่ต้นจนจบ) และรันกับภาพ Himawari จริงเหนือไทยได้
-> ค่า threshold ใน `config/default.yaml` ตั้งเป็นค่าของไทย (เขตร้อน) แล้ว
+```
+ภาพ Himawari ทุก 10 นาที  ──►  convrain  ──►  ชั้น 1  ตอนนี้ฝนตกตรงไหน      แผนที่ฝนตอนนี้ + บริเวณฝนบนพื้น (polygon)
+                                          ──►  ชั้น 2  ฝนจะมาถึงไหม          คำเตือนฝนเริ่ม 3 ระดับ ทุกจุดที่คุณสนใจ
+                                          ──►  ชั้น 3  ฝนจะเริ่ม / หยุดกี่โมง  "ฝนจะเริ่มราว 15:30 น. ความมั่นใจ 45%"
+                                                                            "ฝนจะหยุดราว 16:20 น. ความมั่นใจ 70%"
+                                          ──►  เมฆฝนฟ้าคะนองแต่ละก้อน: ตำแหน่ง ทิศทาง เวลาฝนเริ่ม / หนักสุด / หยุด
+```
+
+สามชั้นแรกตอบคำถามของคนที่อยู่ ณ จุดหนึ่งตามลำดับ "ที่ไหน → มาไหม → กี่โมง" ทุกชั้นคำนวณจากภาพดาวเทียมอย่างเดียว
 
 ---
 
-## 1. โครงสร้าง
+## สารบัญ
+
+1. [ผลิตภัณฑ์](#1-ผลิตภัณฑ์)
+2. [ข้อมูลเข้า](#2-ข้อมูลเข้า)
+3. [ติดตั้ง](#3-ติดตั้ง)
+4. [เริ่มใช้งาน](#4-เริ่มใช้งาน)
+5. [ผลลัพธ์และวิธีอ่าน](#5-ผลลัพธ์และวิธีอ่าน)
+6. [หลักการทำงาน](#6-หลักการทำงาน)
+7. [ความแม่นยำ](#7-ความแม่นยำ)
+8. [ข้อมูลตัวอย่าง](#8-ข้อมูลตัวอย่าง-data)
+9. [ปรับเทียบกับพื้นที่ของคุณ](#9-ปรับเทียบกับพื้นที่ของคุณ)
+10. [การตั้งค่า](#10-การตั้งค่า)
+11. [โครงสร้างโค้ด](#11-โครงสร้างโค้ด)
+12. [ข้อจำกัดที่ควรรู้](#12-ข้อจำกัดที่ควรรู้)
+13. [ที่มาของข้อมูล](#13-ที่มาของข้อมูล)
+
+---
+
+## 1. ผลิตภัณฑ์
+
+| ผลิตภัณฑ์ | ให้อะไร | ใช้เมื่อ |
+|---|---|---|
+| **ชั้น 1 · แผนที่ฝนตอนนี้** | ความน่าจะเป็นที่ฝนกำลังตกถึงพื้น ทุกพิกเซล ~2 km — โหมดกลางวัน (ใช้แสงที่สะท้อนจากเมฆด้วย) / โหมดกลางคืน (อินฟราเรด) และ **บริเวณที่ฝนกำลังตกเป็น polygon บนพื้น** (แก้ parallax แล้ว) พร้อมพื้นที่ / ความน่าจะเป็นสูงสุด — ไม่ต้องกำหนดจุดหรือรอให้มีเมฆที่ติดตาม | ตลอด 24 ชม. ทุกภาพ |
+| **ชั้น 2 · คำเตือนฝนเริ่ม 3 ระดับ** | ทุกจุดที่กำหนด: `watch` ฝนอาจเริ่มภายใน 3 ชม. · `warning` ภายใน 60 นาที · `imminent` ภายใน 30 นาที | จุดที่ยังไม่มีฝน |
+| **ชั้น 3 · เวลาฝนเริ่ม พร้อมความมั่นใจ** | "ฝนจะเริ่มราว HH:MM ความมั่นใจ Y%" ออกใหม่ทุกภาพ | จุดที่ยังไม่มีฝน |
+| **ชั้น 3 · เวลาฝนหยุด พร้อมความมั่นใจ** | "ฝนจะหยุดราว HH:MM ความมั่นใจ Y%" | จุดที่กำลังมีฝน |
+| **เมฆฝนฟ้าคะนองรายก้อน** | ตำแหน่ง (แก้ parallax), ขอบเขต, ความเร็ว / ทิศ, สถานะวงจรชีวิต, ความแรงฝนโดยประมาณ, เวลาฝนเริ่ม / หนักสุด / หยุดพร้อมช่วง 50 / 80 % ทั้งที่ใต้ก้อนเมฆและที่จุดที่กำหนด | เมฆที่ตรวจจับได้ |
+
+ตัวอย่างผลรายจุดจริงของภาพ 07:00 UTC วันที่ 5 ต.ค. 2026 เหนือภาคเหนือตอนล่าง (`examples/outlook_sample.csv`):
 
 ```
-convrain/
-├── config/default.yaml        ค่าตั้งค่าทุกขั้น ตั้งเป็นค่าของไทย (แต่ละการทดลองเขียนไฟล์ทับเฉพาะค่าที่ต่าง)
-├── config/japan.yaml          ทับค่าสำหรับญี่ปุ่น (โดเมน, เกณฑ์อุณหภูมิ +10 K, ภาพพื้นที่ญี่ปุ่น)
-├── config/thailand_phs.yaml   โดเมนรอบเรดาร์พิษณุโลก (ข้อมูลตัวอย่าง)
-├── data/                      ข้อมูลตัวอย่างจริงของไทยและญี่ปุ่น (ดูข้อ 3.1)
-├── convrain/
-│   ├── ingest.py              ขั้น 0  อ่าน AHI, crop, BT/BTD, geometry, QC        (หัวข้อ 3)
-│   ├── detect.py              ขั้น 1  multi-threshold + watershed                (หัวข้อ 4)
-│   ├── motion.py              ขั้น 2  DIS optical flow (motion field เดียว)      (หัวข้อ 5)
-│   ├── track.py               ขั้น 3  online tracking + Kalman filter            (หัวข้อ 6)
-│   ├── features.py            ขั้น 4  interest fields + แนวโน้ม Lagrangian         (หัวข้อ 7)
-│   ├── scope/                 ขั้น 5  เวลาฝนเริ่ม / หนักสุด / หยุด รายวัตถุและรายจุด
-│   ├── intensity.py           ขั้น 6  rain rate LUT + สถานะ lifecycle            (หัวข้อ 9.1–9.3)
-│   ├── parallax.py            ขั้น 6  parallax correction                        (หัวข้อ 9.4)
-│   ├── output.py                      JSON / GeoJSON / Parquet / CSV รายจุด + validation (หัวข้อ 9.5)
-│   ├── labels.py                      label จากเรดาร์ (ตรวจผลรายวัตถุ)             (หัวข้อ 10)
-│   ├── evaluate.py                    POD/FAR/CSI, timing, Brier, bootstrap        (หัวข้อ 10.4)
-│   ├── experiment.py                  replay, LUT, แบ่งข้อมูลตามวัน                (หัวข้อ 15–17)
-│   ├── pipeline.py                    รวมขั้น 0–6 เป็น step() ต่อ scan
-│   └── synthetic.py                   ข้อมูลจำลองสำหรับทดสอบ
-├── scripts/                   คำสั่งตาม Phase ของแผนพัฒนา (ดูข้อ 4)
-├── web/                       เว็บไซต์ Interactive Nowcast
-├── examples/                  ตัวอย่าง output จากข้อมูลจำลอง (JSON, footprints, animation track)
-└── tests/                     unit test
+point     warning_level  p_onset_30  p_onset_60  p_onset_180  onset_time            onset_confidence  stop_time             stop_confidence
+g20_108   imminent       0.14        0.21        0.28         2026-10-05T07:15:00Z  0.10
+g24_152   warning        0.04        0.20        0.46         2026-10-05T07:45:00Z  0.11
+g24_156   watch          0.01        0.08        0.35         2026-10-05T08:15:00Z  0.08
+g20_132   raining        —           —           —                                                  2026-10-05T07:15:00Z  0.61
 ```
 
-ในโค้ดทุกไฟล์มีหัวข้อกำกับแบบ `# [ขั้น 3.2] ...` ตรงกับขั้นย่อยในเอกสาร
+อ่านว่า: จุด g24_152 "เตือน — ฝนอาจเริ่มภายใน 60 นาที (โอกาส 20 %), ถ้ามาน่าจะราว 07:45 แต่ความมั่นใจต่ำ (11 %)";
+จุด g20_132 "กำลังมีฝน — น่าจะหยุดราว 07:15 ความมั่นใจ 61 %"
 
-## 2. ติดตั้ง
+---
+
+## 2. ข้อมูลเข้า
+
+**ขณะใช้งาน โปรแกรมอ่านเฉพาะภาพดาวเทียม Himawari (L1b)** — ไม่มีข้อมูลภาคพื้นใด ๆ เป็นข้อมูลเข้า
+
+| ช่อง | ความยาวคลื่น | ใช้ทำอะไร | จำเป็น |
+|---|---|---|---|
+| B08, B10, B11, B13, B14, B15, B16 | 6.2–13.3 µm (อินฟราเรด) | ตรวจจับ / ติดตามเมฆ, แผนที่ฝนโหมดกลางคืน, คำเตือน, เวลาฝน | ✔ |
+| B04, B05, B07 | 0.86, 1.6, 3.9 µm | แผนที่ฝนโหมดกลางวัน (เมื่อมีไฟล์และดวงอาทิตย์สูงพอ) | ทางเลือก |
+
+นอกจากภาพ โปรแกรมใช้แค่รายชื่อจุดที่ผู้ใช้สนใจ (`key, lat, lon`) และค่าคงที่ที่ติดมากับโปรแกรม
+ข้อมูลฝนจากเรดาร์ / มาตรวัดฝนใช้เฉพาะตอน *ปรับเทียบ* ค่าคงที่และ *ตรวจผล* (ข้อ 9) ซึ่งทำล่วงหน้าแบบ offline
+
+---
+
+## 3. ติดตั้ง
+
+ต้องมี Python 3.10 ขึ้นไป
 
 ```bash
 conda env create -f environment.yml && conda activate convrain
 # หรือ
 python -m venv convrain_env
-source convrain_env/bin/activate
+source convrain_env/bin/activate          # Windows: convrain_env\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 3. ลองรันทันที (ข้อมูลจำลอง ไม่ต้องมีข้อมูลจริง)
+ตรวจว่าติดตั้งครบ:
 
 ```bash
-python -m pytest -q tests                       # unit test
+python -m pytest -q tests
+```
+
+---
+
+## 4. เริ่มใช้งาน
+
+### 4.1 ลองกับข้อมูลจำลอง (ไม่ต้องมีข้อมูลจริง)
+
+```bash
 python scripts/demo_synthetic.py --out outputs/demo
 ```
 
-demo ทำครบ Phase 2–7: replay วันจำลอง (พร้อมเกจเสมือนทุก 6 pixel) → rain rate LUT + ปรับเทียบส่วนทำนายเวลาด้วยเรดาร์จำลอง
-→ ประเมินเวลาฝนเริ่ม / หนักสุด / หยุด บนวัน test → รันแบบ real-time และเขียน output
-จากนั้นส่งออกข้อมูลจำลอง 1 วันเป็นไฟล์ (`outputs/demo/scans`, `outputs/demo/radar`) ไว้ลองสคริปต์ของข้อมูลจริงได้
+ใช้ตรวจว่าทุกขั้นทำงานร่วมกันได้ (ตัวเลขความแม่นยำจากข้อมูลจำลองไม่ได้บอกความแม่นยำจริง)
 
-**ตัวเลขความแม่นยำจากข้อมูลจำลองไม่ได้บอกความแม่นยำกับข้อมูลจริง** ข้อมูลจำลองใช้เพื่อตรวจว่าโค้ดทุกขั้นทำงานร่วมกันได้เท่านั้น
-
-## 3.1 ข้อมูลตัวอย่างจริง (`data/`) — ไทยและญี่ปุ่น
-
-```
-data/
-├── Thai/                                      โดเมนรัศมี 240 km รอบเรดาร์พิษณุโลก (config/thailand_phs.yaml)
-│   ├── satellite/th_20261005.npz, th_20261006.npz      Himawari-9 IR 8 แบนด์ (B08–B16) ทุก 10 นาที 03:00–16:50 UTC
-│   └── ground/
-│       ├── radar_phs/raw_jpeg/<วัน>/PHS_*.jpg          ภาพเรดาร์ TMD พิษณุโลก ทุก 15 นาที (+ PHS_palette.json)
-│       ├── radar_phs/decoded/radar_<วัน>.npz           ภาพเดียวกันที่ถอดเป็น dBZ บนกริดดาวเทียมแล้ว
-│       └── gauges_thaiwater/gauges_hourly_20261005_06.csv   มาตรวัดฝนรายชั่วโมง (ThaiWater) ในรัศมีเรดาร์
-└── Japan/                                     คันโต – คันไซ (config/japan.yaml)
-    ├── satellite/jp_20230726.npz                       Himawari-9 พื้นที่ญี่ปุ่น B08, B11, B13, B15 ทุก 10 นาที 02:00–11:50 UTC
-    └── ground/
-        ├── amedas_10min/20230726/<สถานี>.csv, stations.csv   มาตรวัดฝน 10 นาทีของ JMA (AMeDAS) 266 สถานี
-        └── radar_jma/radar_20230726.npz                เรดาร์ผสม JMA 1 km ทุก 10 นาที: lev (ดัชนีระดับ, 0 = ไม่มีข้อมูล),
-                                                         level_table (มม./ชม. ของระดับ 1, 2, …), lat, lon, time_vals
-```
-
-ภาพดาวเทียมใน `satellite/` คืออุณหภูมิสว่างที่ถอดจากไฟล์ HSD ของ Himawari แล้วตัดเฉพาะโดเมน (ไม่ผ่านการประมวลผลอื่น)
-รูปแบบเดียวกันทั้งสองประเทศ: `Bnn` (เวลา, y, x) K, `lat`, `lon`, `SAZ` (มุมเซนิธดาวเทียม), `time_vals` — อ่านด้วย `scripts/replay_npz.py`
-ข้อมูลภาคพื้นใช้ตรวจผล / ปรับเทียบเท่านั้น ไม่ใช่ข้อมูลเข้าตอนรันจริง
-ที่มา: Himawari-9 — JMA ผ่าน NOAA Open Data (AWS); เรดาร์พิษณุโลก — กรมอุตุนิยมวิทยา (TMD) ผ่านคลังภาพสาธารณะ
-tmd-radar-archive; มาตรวัดฝนไทย — ThaiWater (สสน. / HII และหน่วยงานร่วม); AMeDAS และเรดาร์ — กรมอุตุนิยมวิทยาญี่ปุ่น (JMA)
+### 4.2 เล่นภาพจริงของไทยย้อนหลัง 1 วัน
 
 ```bash
-# ไทย: จุดเสมือนจากเรดาร์ → replay 2 วัน → ประเมินเวลาฝนเริ่ม / หนักสุด / หยุด
-python scripts/ground_to_points.py radar --npz data/Thai/ground/radar_phs/decoded/radar_20261005.npz \
-    data/Thai/ground/radar_phs/decoded/radar_20261006.npz --step 4 --out runs/th_ground
-python scripts/replay_npz.py --npz data/Thai/satellite/th_20261005.npz data/Thai/satellite/th_20261006.npz \
-    --config config/thailand_phs.yaml --points runs/th_ground/points.csv --out runs/th --collect-timing-rows
-python scripts/evaluate_timing.py --rows runs/th/timing_rows.parquet --rain runs/th_ground/rain_points.csv --builtin --out reports/th
-python scripts/calibrate_timing.py --rows runs/th/timing_rows.parquet --rain runs/th_ground/rain_points.csv --out models/th
+# จุดที่สนใจ: CSV คอลัมน์ key, lat, lon (ในตัวอย่างนี้สร้างจุดทุก ~8 km ในรัศมีเรดาร์พิษณุโลก)
+python scripts/ground_to_points.py radar --npz data/Thai/ground/radar_phs/decoded/radar_20261005.npz --step 4 --out runs/th_ground
 
-# ญี่ปุ่น: สถานี AMeDAS เป็นจุด → replay → ประเมิน (วันเดียว)
+python scripts/replay_npz.py --npz data/Thai/satellite/th_20261005.npz --config config/thailand_phs.yaml \
+    --points runs/th_ground/points.csv --out runs/th_20261005
+```
+
+ผลอยู่ใน `runs/th_20261005/rainmap/` และ `geojson/rainnow_*.geojson` (ชั้น 1 แผนที่ฝนตอนนี้), `outlook/` (ชั้น 2–3 คำเตือน + เวลาพร้อมความมั่นใจ ทุกจุด), `points/` (เวลาฝนของเมฆที่ติดตาม), `json/`, `geojson/`
+
+### 4.3 ญี่ปุ่น (มีช่องกลางวัน → แผนที่ฝนโหมดกลางวัน)
+
+```bash
 python scripts/ground_to_points.py amedas --dir data/Japan/ground/amedas_10min/20230726 \
     --stations data/Japan/ground/amedas_10min/stations.csv --out runs/jp_ground
 python scripts/replay_npz.py --npz data/Japan/satellite/jp_20230726.npz --config config/japan.yaml \
-    --points runs/jp_ground/points.csv --out runs/jp --collect-timing-rows
-python scripts/evaluate_timing.py --rows runs/jp/timing_rows.parquet --rain runs/jp_ground/rain_points.csv --builtin --out reports/jp
-
-# ถอดภาพเรดาร์ TMD วันอื่นจาก JPEG เอง / มาตรวัดฝนไทยเป็นจุดพยากรณ์
-python scripts/decode_tmd_radar.py --jpg-dir data/Thai/ground/radar_phs/raw_jpeg/20261005 \
-    --palette data/Thai/ground/radar_phs/raw_jpeg/PHS_palette.json --out runs/radar_decoded
-python scripts/ground_to_points.py thaiwater --csv data/Thai/ground/gauges_thaiwater/gauges_hourly_20261005_06.csv --out runs/th_gauges
+    --points runs/jp_ground/points.csv --out runs/jp_20230726
 ```
 
-ไฟล์ HSD ดิบ (ตอนรันจริง) ใช้ `preprocess_ahi.py` / `run_realtime.py` กับ config เดียวกัน: ไทย `satellite.area: FLDK`,
-ญี่ปุ่น `config/japan.yaml` (`satellite.area: JP01` = ภาพพื้นที่ญี่ปุ่น)
+### 4.4 ใช้งานจริง (ไฟล์ HSD ใหม่ทุก 10 นาที)
 
-## 4. ขั้นตอนกับข้อมูลจริง (ตามแผนพัฒนา)
+```bash
+python scripts/download_himawari.py ...                 # หรือระบบรับข้อมูลของคุณเอง วางไฟล์ HSD ลงโฟลเดอร์
+python scripts/run_realtime.py --watch-dir INCOMING --out nowcast --config config/thailand_phs.yaml --points points.csv
+python run_web.py --port 8000                           # เว็บไซต์แสดงผล + ระบุพิกัดเพื่อดูเวลาฝน
+```
 
-| Phase | คำสั่ง | ผลลัพธ์ |
-|---|---|---|
-| 0 | `python scripts/preprocess_ahi.py --hsd-dir RAW --out-dir data/scans` | NetCDF ที่ crop แล้ว 1 ไฟล์ต่อ scan |
-| 0 | regrid เรดาร์ลง grid ดาวเทียมด้วย `convrain.labels.regrid_to_satellite` แล้วบันทึกเป็น `radar_YYYYMMDDTHHMMZ.nc` (ตัวแปร `dbz`) | ไฟล์เรดาร์ต่อ frame (ตรวจผล / LUT เท่านั้น) |
-| 2–3 | `python scripts/replay.py --scans-dir data/scans --radar-dir data/radar --points gauges.csv --out runs/2025 --collect-lut --collect-timing-rows --no-json` | ตาราง object-scan + tracks + คู่ข้อมูล LUT + แถวสำหรับปรับเทียบเวลา |
-| 2 | `python scripts/plot_tracks.py --scans-dir data/scans --run-dir runs/case01 --gif` | ภาพซ้อน track ไว้ตรวจด้วยตา (ต้อง replay โดยไม่ใส่ `--no-json`) |
-| 5 | `python scripts/build_lut.py --pairs runs/train/lut_pairs.npz --out models/v1/rain_lut.npz` | rain rate LUT (ใช้เฉพาะวันในชุด train) |
-| 5 | `python scripts/calibrate_timing.py --rows runs/train/timing_rows.parquet --rain rain_points.csv --out models/v1` | ค่าคงที่ของส่วนทำนายเวลา (`timing_params.json`) |
-| 6 | `python scripts/evaluate_timing.py --rows runs/2025/timing_rows.parquet --rain rain_points.csv --out reports/v1` | เวลาฝนเริ่ม / หนักสุด / หยุด: MAE, % ภายใน ±5–30 นาที, ช่วง 50/80 % เทียบนาฬิกาตายตัว (เว้นทีละวัน) |
-| 7 | `python scripts/run_realtime.py --watch-dir INCOMING --out nowcast --models-dir models/v1 --points points.csv` | output ทุก 10 นาที + `monitor.csv` + state สำหรับ restart |
-| 7 | `python run_web.py --port 8000` | เว็บไซต์ Interactive Nowcast + ระบุพิกัด GPS เพื่อดูเวลาฝนตก |
+`run_realtime.py` เฝ้าโฟลเดอร์ ประมวลผลภาพใหม่ทันทีที่ไฟล์ครบ บันทึก state ไว้ restart ได้ และเขียน `monitor.csv`
+ทดลองกับไฟล์ HSD ตัวอย่าง: `--watch-dir data/Thai/satellite/hsd_raw --once --keep-days 0`
 
-ทุกสคริปต์รับ `--config my.yaml` ที่ระบุเฉพาะค่าที่ต่างจาก `config/default.yaml`
-ไม่ใส่ `--models-dir` = ใช้ rain rate prior และค่าคงที่ของส่วนทำนายเวลาที่ติดมากับโค้ด
-`gauges.csv` / `points.csv` = คอลัมน์ `key, lat, lon`; `rain_points.csv` = `key, time` + `rain_mm_10min` หรือ `dbz`
+---
 
-## 5. Output (หัวข้อ 9.5)
+## 5. ผลลัพธ์และวิธีอ่าน
 
 ```
 nowcast/
-├── json/objects_20260925T0720Z.json          เอกสารต่อ scan ตามตัวอย่างในเอกสาร
-├── geojson/objects_20260925T0720Z.geojson     FeatureCollection ของจุด (เปิดใน QGIS)
-├── geojson/footprints_20260925T0720Z.geojson  polygon ของแต่ละ object (แก้ parallax แล้ว)
-├── timeseries/date=2026-09-25/scan_0720.parquet   หนึ่งแถวต่อ object ต่อ scan
-└── points/date=2026-09-25/points_0720.csv        เวลาฝนเริ่ม / หนักสุด / หยุด รายจุด (ถ้าตั้งจุดไว้)
+├── rainmap/date=YYYY-MM-DD/rainmap_HHMM.npz    ชั้น 1: แผนที่ฝนตอนนี้ทั้งภาพ (rain_prob_pct 0–100, raining, day_mode)
+├── rainmap/grid.npz                            พิกัดของกริด: lat, lon (ตำแหน่งในภาพ) และ lat_ground, lon_ground (บนพื้น)
+├── geojson/rainnow_YYYYMMDDTHHMMZ.geojson       ชั้น 1: บริเวณที่ฝนกำลังตก (polygon บนพื้น + area_km2, rain_prob_max, mode)
+├── outlook/date=YYYY-MM-DD/outlook_HHMM.csv    ชั้น 2–3 ทุกจุด: คำเตือน 3 ระดับ + เวลาฝนเริ่ม / หยุดพร้อมความมั่นใจ
+├── points/date=YYYY-MM-DD/points_HHMM.csv      จุดที่อยู่ใต้เมฆที่ติดตาม: เวลาฝนเริ่ม / หนักสุด / หยุด (q10 … q90)
+├── json/objects_YYYYMMDDTHHMMZ.json            เมฆรายก้อนต่อ scan (ตรวจด้วย JSON Schema ก่อนเขียน)
+├── geojson/objects_…geojson, footprints_…geojson   ตำแหน่ง / ขอบเขตเมฆ (เปิดใน QGIS)
+└── timeseries/date=YYYY-MM-DD/scan_HHMM.parquet    ตารางเมฆต่อ scan
 ```
 
-ช่อง `onset` (P30, P60, ETA ± ช่วง) และ `intensity.peak_eta / stop_eta` ของแต่ละ object มาจากส่วนทำนายเวลา (ประเมินที่พื้นใต้ศูนย์กลางแกนเมฆ)
-ทุก scan ผ่านการตรวจด้วย JSON Schema และกฎข้าม field ก่อนเขียน (`output.validate_output`)
-`footprint_polygon` อ้างอิงไฟล์ footprints ของ scan เดียวกัน (`footprints_<stamp>.geojson#<object_id>`)
+**ชั้น 1 — แผนที่ฝนตอนนี้:** ค่าในกริดอยู่ที่ตำแหน่งที่ดาวเทียมเห็นยอดเมฆ ส่วน `lat_ground` / `lon_ground` และ polygon ใน `rainnow_*.geojson`
+คือตำแหน่งจริงบนพื้นหลังแก้ parallax (ยอดเมฆสูงปรากฏเยื้องจากตำแหน่งจริงได้ 10–20 km) — ใช้ polygon หรือพิกัดบนพื้นเมื่อจะบอกว่าฝนตกที่ไหน
+เปิด `rainnow_*.geojson` ใน QGIS / เว็บแผนที่ได้ทันที; ปิดได้ด้วย `timing.rainmap_product: false`
 
-## 6. จุดที่โค้ดต่างจากเอกสาร หรือต้องตัดสินใจเพิ่ม
+```python
+import numpy as np
+g = np.load("nowcast/rainmap/grid.npz"); m = np.load("nowcast/rainmap/date=2026-10-05/rainmap_0700.npz")
+rain_lat, rain_lon = g["lat_ground"][m["raining"]], g["lon_ground"][m["raining"]]     # พิกัดบนพื้นของพิกเซลที่เป็นฝน
+```
 
-1. **ขั้น 5 ทำนายเป็นเวลา (ควอนไทล์) ไม่ใช่ความน่าจะเป็นต่อช่วงอย่างเดียว:** ได้ ETA ของฝนเริ่ม / หนักสุด / หยุด พร้อมช่วง 50 / 80 %
-   และ P30 / P60 ของฝนเริ่มจากสมการเดียวกัน (รายละเอียดใน `convrain/scope/README.md`)
-2. **Kalman filter ใช้ BT เฉลี่ยของ pixel ที่เย็นที่สุด 10%** แทน min BT เดี่ยว เพื่อลดผลของ noise ของ pixel เดียว
-3. **Rain rate ก่อน calibrate ใช้ GOES auto-estimator** (Vicente et al. 1998) เป็น prior ซึ่ง calibrate สำหรับสหรัฐฯ ต้องแทนด้วย LUT จากข้อมูลไทย
-4. **Z-R สำหรับแปลงเรดาร์เป็น rain rate** ใน LUT ใช้ค่า convective ทั่วไป (a=300, b=1.4) ควรปรับด้วย rain gauge ของไทย;
-   การปรับเทียบเวลารายจุดใช้ Marshall–Palmer (30 dBZ ≈ 0.5 มม. / 10 นาที)
-5. **Land mask และความสูงภูมิประเทศ** ต้องเตรียมไฟล์เอง แล้วตั้ง `ingest.static_file` ถ้าไม่ตั้ง feature เหล่านี้จะเป็น NaN
-   (ส่วนทำนายเวลาไม่ใช้ค่าเหล่านี้)
-6. **Stop fallback:** track ที่ยังไม่มีแกนลึก (ส่วนทำนายเวลายังไม่ออกคำทำนาย) และกำลังสลาย ใช้การอุ่นขึ้นของยอดเมฆแทน
+**คอลัมน์หลักของ `outlook` (ชั้น 2–3)**
 
-## 7. เวลาประมวลผล
+| คอลัมน์ | ความหมาย |
+|---|---|
+| `warning_level` | `imminent` / `warning` / `watch` / `none` (ยังไม่มีฝน) หรือ `raining` (แผนที่บอกว่ากำลังมีฝน) |
+| `p_onset_30`, `p_onset_60`, `p_onset_180` | โอกาสที่ฝนจะเริ่มภายใน 30 / 60 / 180 นาที |
+| `onset_time`, `onset_in_min`, `onset_confidence` | เวลาฝนเริ่มที่บอก (UTC) และความมั่นใจว่าฝนจะเริ่มภายใน ±15 นาทีของเวลานั้น |
+| `stop_time`, `stop_in_min`, `stop_confidence` | เวลาฝนหยุดและความมั่นใจ (เฉพาะจุดที่กำลังมีฝน) |
+| `rain_now`, `raining_now`, `mode` | ค่าบนแผนที่ฝนตอนนี้ที่จุด, เป็นฝนหรือไม่, โหมดกลางวัน / กลางคืน |
 
-บนข้อมูลจำลอง 160×160 pixel ใช้ ~100 ms ต่อ scan บน CPU core เดียว (ดู `timings.csv`)
-ภาพจริงเหนือไทย 240×260 pixel (รัศมี 240 km รอบพิษณุโลก, 8 แบนด์ IR) กับจุด ~2,200 จุด: มัธยฐาน ~0.5 วินาทีต่อ scan
-(p95 ~0.7) บนโน้ตบุ๊กทั่วไป
+**วิธีอ่านความมั่นใจ:** "ฝนจะเริ่มราว 15:30 น. ความมั่นใจ 45%" แปลว่า ในสถานการณ์แบบนี้ ฝนเริ่มภายใน 15:15–15:45 ราว 45 ใน 100 ครั้ง
+(นับรวมครั้งที่ฝนไม่มาเลย) — ความมั่นใจถูกปรับให้ตรงกับความถี่จริงแล้ว จึงใช้ตัดสินใจได้ตรง ๆ เช่น แจ้งเตือนผู้ใช้เมื่อความมั่นใจ ≥ 50 %
+
+**เวลาเป็นเวลาของภาพ:** ทุกเวลานับจากเวลาที่ดาวเทียมถ่ายภาพ ไฟล์ภาพบนเซิร์ฟเวอร์สาธารณะพร้อมใช้หลังถ่ายราว 10–15 นาที
+"อีก 30 นาที" จึงเหลือเวลาเตือนจริงราว 15–20 นาทีเมื่อผลมาถึงผู้ใช้ (ใช้ `onset_time` ซึ่งเป็นเวลาจริง แทน `onset_in_min`)
+
+---
+
+## 6. หลักการทำงาน
+
+```
+ขั้น 0  อ่านภาพ ตัดโดเมน คำนวณผลต่างช่อง ตรวจคุณภาพ          convrain/ingest.py
+ขั้น 1  ตรวจจับเมฆหลายระดับอุณหภูมิ + watershed               convrain/detect.py
+ขั้น 2  การเคลื่อนที่ของเมฆ (optical flow)                     convrain/motion.py
+ขั้น 3  ติดตามเมฆทีละภาพ + Kalman filter                       convrain/track.py
+ขั้น 4  ตัวแปรของเมฆ + แนวโน้มตามการเคลื่อนที่                  convrain/features.py
+ขั้น 5  แผนที่ฝนตอนนี้, คำเตือน, เวลาฝน                          convrain/scope/   ← หัวใจของการพยากรณ์
+ขั้น 6  parallax, ความแรงฝน, สถานะวงจรชีวิต, output            convrain/parallax.py, intensity.py, output.py
+```
+
+แนวคิดของขั้น 5 โดยย่อ (รายละเอียดและสมการใน [`convrain/scope/README.md`](convrain/scope/README.md)):
+
+- **ดาวเทียมเห็นยอดเมฆ ไม่เห็นเม็ดฝน** — เมฆเย็นกว้างกว่าบริเวณฝนจริงหลายเท่า จึงใช้ *ความหนา* ของเมฆ (ผลต่างช่องอินฟราเรด,
+  แสงสะท้อนตอนกลางวัน) และ *ยอดเมฆที่เย็นเฉพาะที่* เพื่อบอกว่าฝนอยู่ตรงไหนใต้เมฆ → แผนที่ฝนตอนนี้
+- **เมฆมีวงจรชีวิต** — นาฬิกาของเมฆเริ่มเมื่อยอดทะลุระดับพาความร้อนลึก ยิ่งเมฆแก่ ฝนยิ่งใกล้เริ่ม / ใกล้หนักสุด / ใกล้หยุด
+- **สิ่งที่อยู่เหนือจุดสำคัญที่สุดในระยะใกล้** — คอลัมน์อากาศเหนือจุดหนาขึ้นและเย็นลง = ฝนกำลังมา; อุ่นขึ้นและบางลง = ฝนกำลังหยุด
+- **ฝนส่วนใหญ่เคลื่อนมาถึง** — ย้อนตามการเคลื่อนที่ของยอดเมฆบนแผนที่ฝน เพื่อดูว่าฝนต้นลมจะมาถึงในกี่นาที
+- **ฝนใหม่เริ่มจากสภาพแวดล้อม** — เมฆเย็นที่ขยายตัวและยอดที่เย็นลงเร็วในรัศมี 25–50 km บอกการก่อตัวล่วงหน้า 1–3 ชม.
+- **แต่ละระยะใช้ฟิสิกส์ต่างกัน** — คำเตือนแต่ละระดับใช้ตัวแปรของระยะนั้น และรวมเป็นเส้นโค้งโอกาสฝนเริ่มเส้นเดียว
+  คำเตือนและเวลาที่บอกจึงไม่ขัดกันเอง
+- **ความมั่นใจซื่อตรง** — ปรับด้วยข้อมูลที่โมเดลไม่ได้ใช้ฟิต ถ้าภาพไม่มีข้อมูลพอ ความมั่นใจจะต่ำ
+
+ภูมิภาคต่างกันที่ *อุณหภูมิ* ไม่ใช่ฟิสิกส์: โทรโพพอสเขตร้อนสูงกว่า ยอดเมฆลึกของไทยจึงเย็นกว่าญี่ปุ่นราว 10 K
+โปรแกรมมีค่าคงที่ 2 ชุด (`thailand`, `japan`) และปรับเทียบชุดใหม่ได้ (ข้อ 9)
+
+---
+
+## 7. ความแม่นยำ
+
+วัดบนวันที่โมเดลไม่ได้ใช้ฟิต — ไทย: เรดาร์พิษณุโลก 36 วัน (ก.ย.–ต.ค. 2026); ญี่ปุ่น: มาตรวัดฝน 10 นาที 494 สถานี 63 วันฤดูร้อน
+(รายละเอียดใน [`convrain/scope/README.md`](convrain/scope/README.md#7-ความแม่นยำ))
+
+| ผลิตภัณฑ์ | ไทย | ญี่ปุ่น |
+|---|---|---|
+| แผนที่ฝนตอนนี้ — ภายใน ~10 km (CSI) | — | กลางวัน 0.59, ทั้งวัน 0.51 |
+| คำเตือน watch / warning / imminent (CSI) | 0.20 / 0.12 / 0.07 | 0.24 / 0.15 / 0.10 |
+| ฝนหยุด: ความมั่นใจ ≥ 70 % ถูกจริง | 71 % | 77 % |
+| ฝนเริ่ม: ความมั่นใจตรงกับความจริง | ตรง (แต่มักต่ำกว่า 30 %) | ตรง (แต่มักต่ำกว่า 30 %) |
+| เวลาฝนของเมฆที่ติดตาม — MAE ฝนเริ่ม / หนักสุด / หยุด | 38 / 39 / 33 นาที | 31 / 34 / 32 นาที |
+
+ความแม่นยำขึ้นกับขนาดของสิ่งที่ทาย: บอก *บริเวณ* (~10 km) ได้ดีกว่าบอก *จุดเดียว*; บอก *ว่าฝนจะมาไหม* ได้ดีกว่าบอก *นาทีที่มา*
+และเวลาฝนเริ่มที่วัดด้วยเรดาร์กับมาตรวัดฝน ณ จุดเดียวกันเองก็ตรงกันภายใน ±15 นาทีเพียงราว 3 ใน 4 ครั้ง
+
+---
+
+## 8. ข้อมูลตัวอย่าง (`data/`)
+
+```
+data/
+├── Thai/                                  โดเมนรัศมี 240 km รอบเรดาร์พิษณุโลก (config/thailand_phs.yaml)
+│   ├── satellite/th_YYYYMMDD.npz          Himawari-9 อินฟราเรด 8 ช่อง (B08–B16) ทุก 10 นาที 03:00–16:50 UTC,
+│   │                                      36 วัน (2 ก.ย. – 7 ต.ค. 2026)
+│   ├── satellite/hsd_raw/20261005/        ไฟล์ HSD ดิบ 05:00–05:50 UTC (ภาพเต็มดวง segment 04) สำหรับลอง run_realtime
+│   └── ground/                            ข้อมูลภาคพื้น — ใช้ตรวจผล / ปรับเทียบเท่านั้น
+│       ├── radar_phs/decoded/radar_YYYYMMDD.npz   เรดาร์พิษณุโลก (dBZ บนกริดดาวเทียม ทุก 15 นาที) 36 วัน
+│       ├── radar_phs/raw_jpeg/<วัน>/PHS_*.jpg     ภาพเรดาร์ต้นฉบับ 2 วัน + PHS_palette.json + PHS_background_rgb.npz
+│       └── gauges_thaiwater/gauges_hourly_202609_202610.csv.gz   มาตรวัดฝนรายชั่วโมงในรัศมีเรดาร์ (ก.ย.–ต.ค. 2026)
+└── Japan/                                 คันโต – คันไซ (config/japan.yaml)
+    ├── satellite/jp_YYYYMMDD.npz          Himawari-9 พื้นที่ญี่ปุ่น ทุก 10 นาที 02:00–11:50 UTC: B07–B16 + ค่าสะท้อน B04 / B05
+    │                                      (R_B04, R_B05; กลางวัน) — 4 วัน: 2023-07-26, 2023-08-14, 2024-08-04, 2025-07-10
+    ├── satellite/hsd_raw/20230726/        ไฟล์ HSD ดิบ 04:00–04:50 UTC (ภาพพื้นที่ญี่ปุ่น JP01)
+    └── ground/
+        ├── amedas_10min/<วัน>/<สถานี>.csv, stations.csv   มาตรวัดฝน 10 นาที (t_end_jst, t_mid_utc, rain_mm_10min)
+        └── radar_jma/radar_YYYYMMDD.npz   เรดาร์ผสม 1 km ทุก 10 นาที (2023-07-26, 2023-08-14): lev, level_table (มม./ชม.),
+                                           lat, lon, time_vals
+```
+
+รูปแบบไฟล์ภาพ (`*.npz`): `Bnn` (เวลา, y, x) อุณหภูมิสว่าง K, `R_B04` / `R_B05` ค่าสะท้อน 0–1 (ถ้ามี), `lat` (y), `lon` (x),
+`SAZ` (y, x) มุมเซนิธดาวเทียม, `time_vals` (เวลา, UTC) — ถอดจากไฟล์ HSD แล้วตัดเฉพาะโดเมน ไม่ผ่านการประมวลผลอื่น
+เรดาร์ไทย: `dbz` (NaN = นอกพื้นที่วัด, 0 = วัดได้แต่ไม่มีฝน), `valid`; ถอดจากภาพด้วย `scripts/decode_tmd_radar.py`
+
+```bash
+# ถอดภาพเรดาร์วันอื่นเอง / มาตรวัดฝนไทยเป็นจุด
+python scripts/decode_tmd_radar.py --jpg-dir data/Thai/ground/radar_phs/raw_jpeg/20261005 \
+    --palette data/Thai/ground/radar_phs/raw_jpeg/PHS_palette.json --out runs/radar_decoded
+python scripts/ground_to_points.py thaiwater --csv data/Thai/ground/gauges_thaiwater/gauges_hourly_202609_202610.csv.gz --out runs/th_gauges
+```
+
+---
+
+## 9. ปรับเทียบกับพื้นที่ของคุณ
+
+ค่าคงที่ที่ติดมากับโปรแกรมปรับเทียบจากไทย (เรดาร์) และญี่ปุ่น (มาตรวัดฝน 10 นาที) ถ้ามีข้อมูลฝนของพื้นที่อื่น
+(เรดาร์ทุก 10–15 นาที หรือมาตรวัดฝน 10 นาที — รายชั่วโมงหยาบเกินไป) ปรับเทียบใหม่ได้:
+
+```bash
+# 1) จุดที่มีข้อมูลฝน + ตารางฝน (key, time และ rain_mm_10min หรือ dbz)
+python scripts/ground_to_points.py radar --npz radar_*.npz --step 8 --out runs/ground
+# 2) คำเตือน + เวลาพร้อมความมั่นใจ (แบ่งวันเป็นกลุ่ม: ฟิตบนกลุ่มอื่น ตรวจบนกลุ่มที่เว้นไว้ → รายงาน outlook_eval.json)
+python scripts/calibrate_outlook.py --npz <ภาพ>*.npz --config my_region.yaml \
+    --points runs/ground/points.csv --rain runs/ground/rain_points.csv --wet-dbz 10.4 --out models/my
+# 3) เวลาฝนของเมฆที่ติดตาม
+python scripts/replay_npz.py --npz <ภาพ>*.npz --config my_region.yaml --points runs/ground/points.csv \
+    --out runs/cal --collect-timing-rows --no-json
+python scripts/calibrate_timing.py --rows runs/cal/timing_rows.parquet --rain runs/ground/rain_points.csv --wet-dbz 10.4 --out models/my
+python scripts/evaluate_timing.py  --rows runs/cal/timing_rows.parquet --rain runs/ground/rain_points.csv --wet-dbz 10.4 --out reports/my
+# 4) ใช้ค่าใหม่
+python scripts/run_realtime.py --watch-dir INCOMING --out nowcast --config my_region.yaml --models-dir models/my --points points.csv
+```
+
+แนะนำอย่างน้อย ~20 วันที่มีฝนฟ้าคะนอง (ยิ่งหลายวันยิ่งดี เพราะวันต่างกันมากกว่าจุดในวันเดียวกัน)
+
+---
+
+## 10. การตั้งค่า
+
+ทุกสคริปต์รับ `--config my.yaml` ที่ระบุเฉพาะค่าที่ต่างจาก `config/default.yaml` (ค่าเริ่มต้น = ไทย)
+
+| ค่า | ความหมาย |
+|---|---|
+| `domain.*` | กรอบพื้นที่ (lat / lon) |
+| `satellite.area` | `FLDK` ภาพเต็มดวง หรือ `JP01` ภาพพื้นที่ญี่ปุ่น |
+| `satellite.bands`, `satellite.day_bands` | ช่องที่ต้องมี / ช่องกลางวัน (ใช้ถ้ามีไฟล์) |
+| `timing.constants` | ชุดค่าคงที่ `thailand` / `japan` |
+| `timing.points_file` | CSV จุดที่ต้องการผลรายจุด (`key, lat, lon`) |
+| `timing.rainmap_product` | เปิด / ปิดการเขียนแผนที่ฝนตอนนี้ (กริด + บริเวณฝน) |
+| `timing.outlook` | เปิด / ปิดคำเตือน + เวลาพร้อมความมั่นใจ |
+| `timing.core_k`, `footprint_k`, `parallax_top_k` | เกณฑ์อุณหภูมิของภูมิภาค (ไทย 235 / 238 / 220 K, ญี่ปุ่น 245 / 248 / 230 K) |
+| `ingest.max_gap_min` | ข้อมูลขาดนานกว่านี้ → เริ่มติดตามใหม่ |
+
+---
+
+## 11. โครงสร้างโค้ด
+
+```
+convrain/
+├── config/            default.yaml (ไทย), japan.yaml, thailand_phs.yaml
+├── convrain/
+│   ├── ingest.py      อ่าน HSD / NetCDF, ตัดโดเมน, เรขาคณิต, ตรวจคุณภาพ
+│   ├── detect.py      ตรวจจับหลายระดับ + watershed
+│   ├── motion.py      optical flow
+│   ├── track.py       ติดตามทีละภาพ + Kalman filter
+│   ├── features.py    ตัวแปรของเมฆ + แนวโน้ม
+│   ├── scope/         แผนที่ฝนตอนนี้, คำเตือน, เวลาฝน (README.md อธิบายสมการ) + constants/ ค่าคงที่ของภูมิภาค
+│   ├── intensity.py   ความแรงฝน + สถานะวงจรชีวิต
+│   ├── parallax.py    แก้ parallax
+│   ├── output.py      JSON / GeoJSON / Parquet / CSV + ตรวจ schema
+│   ├── labels.py, evaluate.py, experiment.py   ตรวจผลด้วยเรดาร์ / คะแนน / replay ย้อนหลัง (offline)
+│   ├── pipeline.py    รวมทุกขั้นเป็น step() ต่อภาพ
+│   └── synthetic.py   ข้อมูลจำลองสำหรับทดสอบ
+├── scripts/           คำสั่งใช้งาน (replay, run_realtime, calibrate_*, evaluate_*, decode_tmd_radar, …)
+├── web/, run_web.py   เว็บไซต์แสดงผล
+├── data/              ข้อมูลตัวอย่าง (ข้อ 8)
+└── tests/             unit test
+```
+
+---
+
+## 12. ข้อจำกัดที่ควรรู้
+
+- **ฝนเริ่มที่จุดเดียวคาดยาก** — ฝนฟ้าคะนองเป็นหย่อมเล็กและอายุสั้น ความมั่นใจของเวลาฝนเริ่มจึงมักต่ำ (ส่วนใหญ่ < 50 %)
+  ใช้คำเตือน 3 ระดับและโอกาส `p_onset_*` คู่กันเสมอ; ฝนหยุดคาดได้ดีกว่า
+- **ตำแหน่งฝนแม่นราว ±10 km** — ที่ความเร็วเมฆ 20–25 km/ชม. เท่ากับความไม่แน่นอนของเวลาราว 25 นาที
+- **10 นาทีสุดท้ายก่อนฝนตก** สัญญาณบนภาพมักมาพร้อมฝน ประกอบกับความหน่วงของข้อมูล 10–15 นาที
+- **แม้ความจริงเองก็คลาด** — เวลาฝนเริ่มจากเรดาร์กับจากมาตรวัดฝน ณ จุดเดียวกันตรงกันภายใน ±15 นาทีราว 3 ใน 4 ครั้ง
+- **โหมดกลางวันต้องมีช่อง B04 / B05 / B07** — ข้อมูลตัวอย่างของไทยมีเฉพาะอินฟราเรด จึงใช้โหมดกลางคืนตลอด
+- ค่าคงที่ของไทยปรับเทียบจากช่วงปลายฤดูฝน (ก.ย.–ต.ค.) รอบเรดาร์พิษณุโลก — ฤดูหรือพื้นที่อื่นควรปรับเทียบใหม่
+
+**เวลาประมวลผล:** ภาพจริงเหนือไทย 240 × 260 พิกเซล กับจุด ~2,000 จุด ราว 1 วินาทีต่อภาพบนโน้ตบุ๊กทั่วไป (ทุกผลิตภัณฑ์รวมกัน)
+
+---
+
+## 13. ที่มาของข้อมูล
+
+- **Himawari-9** — Japan Meteorological Agency (JMA) ผ่าน NOAA Open Data Dissemination (AWS)
+- **เรดาร์พิษณุโลก** — กรมอุตุนิยมวิทยา (TMD) ผ่านคลังภาพสาธารณะ tmd-radar-archive
+- **มาตรวัดฝนไทย** — ThaiWater (สถาบันสารสนเทศทรัพยากรน้ำ (สสน.) และหน่วยงานร่วม)
+- **AMeDAS และเรดาร์ผสม** — กรมอุตุนิยมวิทยาญี่ปุ่น (気象庁, JMA)
+
+ข้อมูลภาคพื้นในโฟลเดอร์ `data/` ใช้เพื่อตรวจผลและปรับเทียบเท่านั้น โปรดตรวจเงื่อนไขการใช้ของแต่ละแหล่งก่อนเผยแพร่ต่อ

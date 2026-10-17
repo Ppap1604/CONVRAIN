@@ -113,10 +113,10 @@ def fit_event_models(rows: pd.DataFrame, switch_minutes: float = 30.0) -> dict:
         I = event_rows(rows, x)
         if len(I) < 50:
             raise ValueError(f"{x}: แถวที่ใช้ได้มีแค่ {len(I)} (ต้อง ≥ 50) — เพิ่มวัน / จุด")
-        w1 = WeibullClock.fit(I, x)
-        w1.c = choose_c(w1.quantiles(I), I[x].to_numpy(float))
-        hc = LightHazard.for_event(w1, x).fit(I, x)
-        out[x] = Switch(hc, w1, switch_minutes).to_dict() if x == "stop" else hc.to_dict()
+        clock = WeibullClock.fit(I, x)
+        clock.c = choose_c(clock.quantiles(I), I[x].to_numpy(float))
+        haz = LightHazard.for_event(clock, x).fit(I, x)
+        out[x] = Switch(haz, clock, switch_minutes).to_dict() if x == "stop" else haz.to_dict()
     return out
 
 

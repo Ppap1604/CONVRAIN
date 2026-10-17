@@ -20,6 +20,8 @@ satellite:
   area: FLDK                # ชนิดภาพในชื่อไฟล์ HSD: FLDK = เต็มดวง, JP01 = พื้นที่ญี่ปุ่นภาพย่อยแรกของทุก 10 นาที
   # band ที่ใช้: B08=6.2, B10=7.3, B11=8.6, B13=10.4, B14=11.2, B15=12.4, B16=13.3 µm
   bands: [B08, B10, B11, B13, B14, B15, B16]
+  # ช่องกลางวัน (ทางเลือก): ถ้ามีไฟล์ แผนที่ฝนตอนนี้ใช้โหมดกลางวันเมื่อดวงอาทิตย์สูงพอ (B04 0.86 µm, B05 1.6 µm, B07 3.9 µm)
+  day_bands: [B04, B05, B07]
 
 ingest:
   max_gap_min: 30           # ถ้า scan ขาดนานกว่านี้ให้ reset tracker
@@ -27,22 +29,13 @@ ingest:
 
 # ---------- ขั้น 1: Detection (หัวข้อ 4) ----------
 detect:
-  thresholds_k: [278.0, 263.0, 248.0, 233.0, 218.0]   # ซอยชั้นอุณหภูมิทุกๆ 15 K และขยับเพดานเป็น 278 K (+5°C)
-  warm_threshold_k: 283.0   # ขยายเพดานจับเมฆฝนอุ่นถึง 283 K (+10°C)
-  warm_btd73_min: -16.0     # เกณฑ์ BTD(7.3 - 10.4) สำหรับเมฆฝนอุ่น
-  min_area_px: 5            # A_min: ตรวจจับเซลล์พายุเดี่ยวได้เร็วขึ้น (~20 km²)
-  min_core_px: 3            # เกณฑ์ขนาดแกนเย็นด้านใน (~12 km²)
-  prominence_k: 4.0         # ความลึกหลุมความเย็นขั้นต่ำสำหรับ H-minima (แก้ Anvil Masking)
+  thresholds_k: [273.0, 253.0, 235.0, 220.0]   # threshold ซ้อน (อุ่น → เย็น) ตัวแรกคือ T1
+  min_area_px: 4            # A_min: object ที่เล็กกว่านี้ถือเป็น noise
   drop_edge_objects: true   # ตัด object ที่แตะขอบโดเมน
   thin_cirrus_btd_sw: 3.0   # BTD(10.4-12.4) สูงกว่านี้ + BT เย็น = cirrus บาง
   thin_cirrus_bt_max: 253.0 # ใช้เกณฑ์ cirrus เฉพาะ pixel ที่เย็นกว่าค่านี้
   refine_contours: false    # Level Set Active Contours ปรับขอบเขตให้ยึดติด thermal gradient สูงสุด
   active_contour_iter: 5    # จำนวนรอบ Level Set
-
-# ---------- Onset Prefilter (หัวข้อ 8 / Detection Enhancement) ----------
-onset:
-  prefilter_max_min_bt: 278.0
-  prefilter_min_age_scans: 1
 
 # ---------- ขั้น 2: Motion field (หัวข้อ 5) ----------
 motion:
@@ -78,8 +71,13 @@ features:
   trend_windows_min: [10, 20, 30]
   cold_fraction: 0.1        # ใช้ค่าเฉลี่ยของ 10% pixel ที่เย็นที่สุด
 
-# ---------- ขั้น 5: เวลาฝนเริ่ม / หนักสุด / หยุด (convrain/scope, อ่าน convrain/scope/README.md) ----------
+# ---------- ขั้น 5: ฝนตอนนี้ + คำเตือน + เวลาฝนเริ่ม / หนักสุด / หยุด (convrain/scope, อ่าน convrain/scope/README.md) ----------
 timing:
+  constants: thailand        # ชุดค่าคงที่ที่ติดมากับโปรแกรม (convrain/scope/constants): thailand / japan
+  rainmap_product: true     # เขียนแผนที่ฝนตอนนี้ (กริดทั้งภาพ + บริเวณฝนบนพื้น) ทุก scan
+  outlook: true             # คำเตือน 3 ระดับ + เวลาฝนเริ่ม / หยุดพร้อมความมั่นใจ ของทุกจุดใน points_file
+  rainmap_file: null        # JSON แผนที่ฝนที่ปรับเทียบเอง (null = ชุดตาม constants)
+  outlook_file: null        # JSON คำเตือน / เวลาพร้อมความมั่นใจ ที่ปรับเทียบเอง (scripts/calibrate_outlook.py)
   footprint_k: 238.0        # รอยเมฆพาความร้อน = พิกเซลของวัตถุที่ B13 < ค่านี้
   core_k: 235.0             # แกนลึก (ระดับ deep convection ของเขตร้อน = detect.thresholds_k ตัวที่ 3)
   core_min_px: 4            # นาฬิกา t0 เริ่มเมื่อแกนมี ≥ จำนวนพิกเซลนี้ (= detect.min_area_px)
@@ -87,8 +85,8 @@ timing:
   pixel_match_km: 1.5       # พิกเซลที่ตำแหน่งหลังแก้ parallax ห่างจุด ≤ ค่านี้ = พิกเซลเหนือจุด
   depth_disc_px: 3          # รัศมี (พิกเซล) ของหน้าต่างหายอดเมฆลึกสุดใกล้จุด (≈ 6 km)
   d2_max: 16.0              # ทายให้จุดที่อยู่ภายใน 4σ ของวงรีแกน (d² < 16)
-  warn_threshold: 0.30      # P(ฝนเริ่มภายใน 30 นาที) ที่ออกคำเตือน (Phase 1 ROC/Sensitivity calibration)
-  points_file: null         # CSV (key, lat, lon) ของจุดที่ต้องการเวลารายจุด; null = รายวัตถุอย่างเดียว
+  warn_threshold: 0.5       # P(ฝนเริ่มภายใน 30 นาที) ที่ออกคำเตือน
+  points_file: null         # CSV (key, lat, lon) ของจุดที่ต้องการผลรายจุด; null = รายวัตถุอย่างเดียว
   params_file: null         # JSON ค่าคงที่จาก scripts/calibrate_timing.py; null = ค่าที่ติดมากับโค้ด
 
 # ---------- ขั้น 6: Intensity / lifecycle (หัวข้อ 9) ----------

@@ -1,6 +1,5 @@
 """
-CONVRAIN Precision Satellite Convective Nowcasting Platform
-FastAPI Application Server
+FastAPI Server สำหรับ Convrain Web Platform
 """
 from __future__ import annotations
 
@@ -8,17 +7,18 @@ import argparse
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, Query, HTTPException, Response
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from web.data_loader import ConvrainDataLoader
+from web.point_nowcast import analyze_point, compute_trajectories_and_impacts
 
 app = FastAPI(
-    title="CONVRAIN Precision Nowcast Platform",
-    description="Precision Satellite Convective Nowcasting Platform (Heads-Up Display HUD)",
-    version="2.0.0",
+    title="Convrain Nowcast Platform API",
+    description="API สำหรับแสดงผลการตรวจจับและพยากรณ์เวลาเริ่มตกของฝน convective และระบุพิกัด GPS",
+    version="1.0.0",
 )
 
 app.add_middleware(
@@ -29,6 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# DataLoader จะถูก initialize ตอนเริ่ม server หรือใช้ default
 loader = ConvrainDataLoader()
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -41,56 +42,128 @@ def serve_index():
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
-    return {"message": "CONVRAIN Platform API is running. UI not found in static/."}
+    return {"message": "Convrain Web Platform API is running. UI not found in static/."}
 
 
 @app.get("/api/sources")
 def get_source_info():
-    """Information about active data directory and loaded scans."""
+    """ดูสถานะแหล่งข้อมูลที่ระบบกำลังอ่านอยู่"""
     return loader.get_source_info()
+
+
+@app.get("/api/datasets")
+def get_datasets():
+    """รายการชุดข้อมูลที่มีในระบบ (ข้อมูลจริง vs ข้อมูลจำลอง)"""
+    current_id = "real" if "real_nowcast" in str(loader.base_dir) else "simulation"
+    return {
+        "current": current_id,
+        "datasets": [
+            {
+                "id": "real",
+                "name": "🛰️ ข้อมูลจริง Himawari-9 (28 ก.ย. 2026)",
+                "path": "runs/real_nowcast",
+                "is_real": True,
+            },
+            {
+                "id": "simulation",
+                "name": "🧪 ข้อมูลจำลอง 30 สแกน (Simulation)",
+                "path": "runs/2025/realtime",
+                "is_real": False,
+            },
+        ],
+    }
+
+
+@app.post("/api/datasets/{dataset_id}")
+def switch_dataset(dataset_id: str):
+    """สลับชุดข้อมูลที่แสดงผลบนเว็บ"""
+    if not loader.set_dataset(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    return {
+        "status": "ok",
+        "current": dataset_id,
+        "scan_count": len(loader.list_scans()),
+    }
 
 
 @app.get("/api/scans")
 def list_scans():
-    """List all available scans (observed 10-min scans + nowcast forecast steps)."""
+    """รายการ scan ทั้งหมดในระบบ"""
     scans = loader.list_scans()
     return {"total": len(scans), "scans": scans}
 
 
 @app.get("/api/scans/latest")
 def get_latest_scan():
-    """Get latest observed scan data."""
-    return loader.get_scan(None)
+    """ดึงข้อมูล scan ล่าสุด (JSON objects + Footprints GeoJSON)"""
+    scans = loader.list_scans()
+    if not scans:
+        raise HTTPException(status_code=404, detail="ไม่พบข้อมูล scan ในระบบ")
+    latest_stamp = scans[-1]["stamp"]
+    return get_scan_by_stamp(latest_stamp)
 
 
 @app.get("/api/scans/{stamp}")
 def get_scan_by_stamp(stamp: str):
-    """Get scan data for specific timestamp (or forecast step)."""
-    return loader.get_scan(stamp)
+    """ดึงข้อมูล scan ตามรหัส timestamp เช่น 20260520T0720Z"""
+    doc, footprints = loader.get_scan(stamp)
+    if not doc:
+        raise HTTPException(status_code=404, detail=f"ไม่พบข้อมูล scan: {stamp}")
 
+    # รวบรวมข้อมูล summary
+    objects = doc.get("objects", [])
+    developing_count = sum(1 for o in objects if o.get("status") == "developing")
+    raining_count = sum(1 for o in objects if o.get("status") in ["raining", "peak"])
+    warning_count = sum(
+        1 for o in objects 
+        if (o.get("status") == "developing" and (o.get("onset", {}).get("p_within_30min") or 0) >= 0.5)
+        or o.get("status") == "raining"
+    )
 
-@app.get("/api/telemetry")
-def get_telemetry(stamp: Optional[str] = None):
-    """Zone A: Telemetry indicators & SpaceX Mission Control latency breakdown."""
-    return loader.get_telemetry(stamp)
+    traj_and_impacts = compute_trajectories_and_impacts(doc, footprints)
+
+    return {
+        "stamp": stamp,
+        "scan_time": doc.get("scan_time"),
+        "model_version": doc.get("model_version"),
+        "summary": {
+            "total_objects": len(objects),
+            "developing_count": developing_count,
+            "raining_count": raining_count,
+            "warning_count": warning_count,
+            "impact_zones_count": len(traj_and_impacts["impact_zones"]["features"]),
+        },
+        "doc": doc,
+        "footprints": footprints,
+        "trajectories": traj_and_impacts["trajectories"],
+        "impact_zones": traj_and_impacts["impact_zones"],
+    }
 
 
 @app.get("/api/nowcast/point")
 def get_point_nowcast(
-    lat: float = Query(..., description="Latitude"),
-    lon: float = Query(..., description="Longitude"),
-    stamp: Optional[str] = Query(None, description="Scan stamp"),
+    lat: float,
+    lon: float,
+    stamp: Optional[str] = None,
 ):
     """
-    Scenario 1: Pinpoint Coordinate Prediction
-    Calculates rain onset risk, ETA countdown, nearest cloud physics, and confidence.
+    วิเคราะห์และพยากรณ์การเกิดฝน ณ พิกัด GPS หรือพิกัดที่ระบุ
+    คืนค่าสถานะ: ฝนตกอยู่แล้ว / เมฆกำลังพัฒนาตรงนี้ / เมฆกำลังเคลื่อนเข้ามา / ปลอดภัย
+    พร้อมช่วงเวลา onset (ETA window), โอกาสเกิดฝน, และความแรง
     """
-    return loader.get_point_nowcast(lat=lat, lon=lon, stamp=stamp)
+    if not isinstance(stamp, str):
+        stamp = None
+    doc, footprints = loader.get_scan(stamp)
+    if not doc:
+        raise HTTPException(status_code=404, detail="ไม่มีข้อมูล scan สำหรับวิเคราะห์")
+
+    result = analyze_point(lat=lat, lon=lon, scan_doc=doc, footprints_fc=footprints)
+    return result
 
 
 @app.get("/api/objects/{track_id}/history")
 def get_object_history(track_id: str):
-    """Multi-scan timeseries history for Bento Grid and Micro-timeseries chart."""
+    """ประวัติของ object ข้าม scan สำหรับพล็อตกราฟ"""
     history = loader.get_object_history(track_id)
     return {
         "track_id": track_id,
@@ -99,45 +172,26 @@ def get_object_history(track_id: str):
     }
 
 
-@app.get("/api/objects/{track_id}/export")
-def export_object_csv(track_id: str):
-    """Export track timeseries data as downloadable CSV."""
-    csv_text = loader.export_track_csv(track_id)
-    return Response(
-        content=csv_text,
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=track_{track_id}.csv"},
-    )
-
-
-@app.get("/api/closed_tracks")
-def get_closed_tracks():
-    """Historical Mode: closed tracks archive."""
-    if loader._closed_tracks_df is not None and not loader._closed_tracks_df.empty:
-        return {
-            "total": len(loader._closed_tracks_df),
-            "tracks": loader._closed_tracks_df.head(100).to_dict(orient="records"),
-        }
-    return {"total": 0, "tracks": []}
+@app.get("/api/monitor")
+def get_monitor():
+    """ข้อมูลประสิทธิภาพและสุขภาพระบบ (latency, drift)"""
+    return loader.get_monitor_stats()
 
 
 def main():
     import uvicorn
-    parser = argparse.ArgumentParser(description="CONVRAIN Server")
+    parser = argparse.ArgumentParser(description="Convrain Web Server")
     parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8500)
-    parser.add_argument("--data-dir", default=None, help="Path to CONVRAIN_OUTPUT directory")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--data-dir", default=None, help="โฟลเดอร์ output ของ convrain")
     args = parser.parse_args()
 
     global loader
     if args.data_dir:
         loader = ConvrainDataLoader(args.data_dir)
 
-    print("=" * 70)
-    print("🛰️  CONVRAIN PRECISION NOWCASTING PLATFORM")
-    print(f"📡 Data Source: {loader.base_dir.resolve()}")
-    print(f"🌐 Server Address: http://localhost:{args.port}")
-    print("=" * 70)
+    print(f"Starting Convrain Web Platform on http://localhost:{args.port}")
+    print(f"Data directory: {loader.base_dir.resolve()}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 

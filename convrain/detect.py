@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy import ndimage
-from skimage.morphology import h_minima
 from skimage.segmentation import watershed
 
 from .ingest import Scan
@@ -70,54 +69,23 @@ class Detections:
 # =====================================================================
 # [ขั้น 1.1] mask เมฆที่มีศักยภาพ + ตัด cirrus บาง
 # =====================================================================
-def candidate_mask(scan: Scan, cfg: dict, prev_ir: np.ndarray | None = None) -> np.ndarray:
+def candidate_mask(scan: Scan, cfg: dict) -> np.ndarray:
     """
-    [อัปเกรด ขั้น 1.1] Hybrid Mask:
-    1. จับเมฆยอดเย็นปกติ (BT < T1 เช่น 278 K)
-    2. จับเมฆฝนอุ่น/เมฆก่อตัวระยะแรก (T1 <= BT < T_warm เช่น 283 K) ที่มีไอน้ำอัดแน่นหรือกำลังเย็นตัวเร็ว
-    3. กรอง Cirrus บางอย่างปลอดภัยโดยไม่ตัดขอบเมฆพาความร้อนที่กำลังพัฒนา
+    pixel ที่ BT(10.4) < T1 และไม่ใช่ cirrus บาง
+    ใช้หลัก Multi-spectral Band Math (Inoue 1987; Mecikalski & Bedka 2006):
+    1. Split Window BTD(10.4 - 12.4): cirrus บางมี BTD_SW สูง (> ~3 K) ร่วมกับ BT เย็น
+    2. Tri-Spectral TTD: ถ้า TTD < -2.0 K ร่วมกับ BTD_SW สูง ยืนยันว่าเป็น cirrus โปร่งแสงไม่มีฝน
     """
     d = cfg["detect"]
     t1 = max(d["thresholds_k"])
-    t_warm = float(d.get("warm_threshold_k", 283.0))
-
-    # 1. เมฆเย็นมาตรฐาน
-    cold_mask = scan.ir < t1
-
-    # 2. เมฆอุ่นที่กำลังยกตัวแรง (Growing Cumulus / Warm Rain)
-    warm_zone = (scan.ir >= t1) & (scan.ir < t_warm)
-    active_updraft = np.zeros_like(warm_zone)
-
-    # เช็กความชื้นระดับกลาง-ล่างจากช่อง 7.3 µm (ถ้ามี)
-    if np.isfinite(scan.btd_73).any():
-        active_updraft |= (scan.btd_73 > float(d.get("warm_btd73_min", -16.0)))
-
-    # เช็กการเย็นตัวเทียบกับ scan ก่อนหน้า (ถ้าส่ง prev_ir เข้ามา)
-    if prev_ir is not None and prev_ir.shape == scan.ir.shape:
-        active_updraft |= ((scan.ir - prev_ir) < -3.0)
-
-    # เช็กความสว่างช่อง Visible ตอนกลางวัน (ถ้ามี B03)
-    if "B03" in scan.refl:
-        active_updraft |= (scan.refl["B03"] > 0.45)
-
-    mask = cold_mask | (warm_zone & active_updraft)
-
-    # 3. ตัด Cirrus บาง (แต่เก็บเมฆที่ยอดลึกติด Tropopause ไว้เสมอ)
+    mask = scan.ir < t1
     btd_sw = scan.btd_sw
     if np.isfinite(btd_sw).any():
-        deep_core = (scan.btd_wv > -12.0) if np.isfinite(scan.btd_wv).any() else False
-        cirrus = (
-            (btd_sw > d["thin_cirrus_btd_sw"])
-            & (scan.ir < d["thin_cirrus_bt_max"])
-            & (~deep_core)
-        )
+        cirrus = (btd_sw > d["thin_cirrus_btd_sw"]) & (scan.ir < d["thin_cirrus_bt_max"])
         ttd = scan.ttd
         if np.isfinite(ttd).any():
-            cirrus |= (btd_sw > 2.0) & (ttd < -2.0) & (scan.ir < 265.0) & (~deep_core)
+            cirrus |= (btd_sw > 2.0) & (ttd < -2.0) & (scan.ir < 265.0)
         mask &= ~cirrus
-
-    # ปิดรูรั่วขนาดเล็กภายในก้อนเมฆ (รักษาขอบภาพด้วย border_value=1)
-    mask = ndimage.binary_closing(mask, structure=np.ones((2, 2), dtype=bool), border_value=1)
     return mask
 
 
@@ -147,77 +115,27 @@ def _find_cores(region: np.ndarray, ir: np.ndarray, levels: list[float], min_are
     return cores
 
 
-def _find_cores_hybrid(
-    region: np.ndarray,
-    sub_ir: np.ndarray,
-    levels: list[float],
-    min_core_area: int,
-    prominence_k: float = 4.0,
-) -> list[tuple[np.ndarray, float]]:
-    """
-    [อัปเกรด ขั้น 1.2–1.3] ผสาน Multi-threshold Tree เข้ากับ H-Minima Local Prominence
-    ช่วยดึงเซลล์เมฆเกิดใหม่ที่อยู่ติดกับเมฆก้อนใหญ่ (Anvil masking) ออกมาเป็นแกนอิสระ
-    """
-    # 1. หาแกนตามโครงสร้างต้นไม้เดิม (ลดขนาดขั้นต่ำของแกนเป็น min_core_area)
-    tree_cores = _find_cores(region, sub_ir, levels, min_core_area)
-
-    if len(levels) <= 1:
-        return tree_cores
-
-    # 2. หาหลุมความเย็นท้องถิ่นด้วย H-minima บนภาพที่ smooth ลด noise เล็กน้อย
-    smooth_ir = ndimage.gaussian_filter(np.where(region, sub_ir, 300.0), sigma=0.8)
-    local_min = h_minima(smooth_ir, h=prominence_k) & region
-    lab_min, n_min = ndimage.label(local_min, structure=STRUCTURE_8)
-
-    if n_min <= 1:
-        return tree_cores
-
-    # รวมแกนจาก H-minima ที่ยังไม่ได้ถูกครอบคลุมโดยแกนจากต้นไม้
-    has_subcore = any(lvl < levels[0] for _, lvl in tree_cores)
-    covered = np.zeros_like(region, dtype=bool)
-    if has_subcore:
-        for cmask, lvl in tree_cores:
-            if lvl < levels[0]:
-                covered |= cmask
-
-    extra_cores: list[tuple[np.ndarray, float]] = []
-    for k in range(1, n_min + 1):
-        c_mask = (lab_min == k)
-        c_dilated = ndimage.binary_dilation(c_mask, iterations=1) & region
-        if c_dilated.sum() >= min_core_area and not (c_dilated & covered).any():
-            mean_lvl = float(np.mean(sub_ir[c_mask]))
-            extra_cores.append((c_dilated, mean_lvl))
-            covered |= c_dilated
-
-    if not has_subcore and extra_cores:
-        return extra_cores
-
-    return tree_cores + extra_cores
-
-
 # =====================================================================
 # [ขั้น 1] ฟังก์ชันหลัก
 # =====================================================================
-def detect_objects(scan: Scan, cfg: dict, prev_ir: np.ndarray | None = None) -> Detections:
+def detect_objects(scan: Scan, cfg: dict) -> Detections:
     """
     ตรวจจับวัตถุเมฆใน scan
 
     ขั้นตอน
-        1. mask = BT < T1 และไม่ใช่ cirrus บาง (+ Warm Cumulus / Cooling updraft)
+        1. mask = BT < T1 และไม่ใช่ cirrus บาง
         2. connected components ที่ระดับ T1 = ก้อนเมฆชั้นนอก
-        3. ในแต่ละก้อนหาแกนตามต้นไม้ threshold + H-minima local prominence
+        3. ในแต่ละก้อนหาแกนตามต้นไม้ threshold (ลึกสุดที่พื้นที่ ≥ A_min)
         4. ถ้ามีหลายแกน แบ่ง pixel ของก้อนด้วย watershed บน BT
         5. ตัด object ที่เล็กเกินไป / แตะขอบโดเมน แล้วคำนวณคุณสมบัติพื้นฐาน
     """
     d = cfg["detect"]
     levels = sorted(d["thresholds_k"], reverse=True)  # เรียงจากอุ่น → เย็น
-    min_area = int(d.get("min_area_px", 5))
-    min_core_area = int(d.get("min_core_px", 3))
-    prominence_k = float(d.get("prominence_k", 4.0))
+    min_area = int(d["min_area_px"])
     ir = scan.ir
     ny, nx = ir.shape
 
-    mask = candidate_mask(scan, cfg, prev_ir=prev_ir)
+    mask = candidate_mask(scan, cfg)
     outer, n_outer = ndimage.label(mask, structure=STRUCTURE_8)
     labels = np.zeros((ny, nx), dtype=np.int32)
     core_level: dict[int, float] = {}
@@ -230,7 +148,7 @@ def detect_objects(scan: Scan, cfg: dict, prev_ir: np.ndarray | None = None) -> 
         if region.sum() < min_area:
             continue
         sub_ir = ir[sl]
-        cores = _find_cores_hybrid(region, sub_ir, levels, min_core_area, prominence_k=prominence_k)
+        cores = _find_cores(region, sub_ir, levels, min_area)
 
         if len(cores) == 1:
             # แกนเดียว: ทั้งก้อนเป็น object เดียว
@@ -315,7 +233,7 @@ def _measure(labels: np.ndarray, scan: Scan, cfg: dict, core_level: dict[int, fl
     from .parallax import cloud_top_height_km, parallax_correct, shift_km
 
     d = cfg["detect"]
-    min_area = int(d.get("min_area_px", 5))
+    min_area = int(d["min_area_px"])
     cold_frac = cfg["features"]["cold_fraction"]
     t1 = max(d["thresholds_k"])
     ir = scan.ir

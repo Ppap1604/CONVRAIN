@@ -4,7 +4,7 @@
 Input เหมือน calibrate_timing.py (--rows, --rain); วันที่ทดสอบไม่ถูกใช้ปรับเทียบในรอบของมันเลย
 Output (--out)/timing_eval.json + ตารางบนจอ: MAE, % ภายใน ±5 / 10 / 15 / 30 นาที และความครอบคลุมช่วง 50 / 80 %
 แยกตามระยะเวลาจริงก่อนเหตุการณ์ (0–10, 10–30, 30–60, 60–120 นาที)
---builtin : ประเมินค่าคงที่ที่ติดมากับโค้ด (ไม่ปรับเทียบใหม่) แทน
+--builtin : ประเมินค่าคงที่ที่ติดมากับโค้ด (ไม่ปรับเทียบใหม่) แทน — เลือกชุดด้วย --region thailand | japan
 
 รัน:
     python scripts/evaluate_timing.py --rows runs/sep/timing_rows.parquet --rain radar_points.csv --out reports/th1
@@ -31,15 +31,17 @@ def main() -> None:
     ap.add_argument("--rows", nargs="+", required=True)
     ap.add_argument("--rain", required=True)
     ap.add_argument("--time-label", default="mid", choices=["mid", "end", "start"])
+    ap.add_argument("--wet-dbz", type=float, default=None, help="เรดาร์: เกณฑ์ฝนตก (dBZ)")
     ap.add_argument("--builtin", action="store_true", help="ใช้ค่าคงที่ที่ติดมากับโค้ด ไม่ปรับเทียบใหม่ต่อรอบ")
+    ap.add_argument("--region", default="thailand", choices=["thailand", "japan"], help="ชุดค่าคงที่ของ --builtin")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     rows = pd.concat([pd.read_parquet(p) for p in args.rows], ignore_index=True)
     rows["station"] = rows.station.astype(str)
-    T = training_rows(rows, load_rain(args.rain, args.time_label))
+    T = training_rows(rows, load_rain(args.rain, args.time_label, args.wet_dbz))
     T["day"] = pd.to_datetime(T.t * 60, unit="s", utc=True).dt.strftime("%Y-%m-%d")
-    builtin = load_event_models() if args.builtin else None
+    builtin = load_event_models(region=args.region) if args.builtin else None
     one_day = T.day.nunique() == 1
     if one_day and not builtin:
         raise SystemExit("มีข้อมูลวันเดียว: เว้นทีละวันไม่ได้ — ใช้ --builtin หรือเพิ่มวัน")

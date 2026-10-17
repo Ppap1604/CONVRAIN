@@ -31,7 +31,7 @@ def _deep_update(base: dict, override: dict) -> dict:
 def load_config(path: str | Path | None = None, overrides: dict | None = None) -> dict[str, Any]:
     """
     อ่าน config/default.yaml ก่อน แล้วทับด้วยไฟล์ที่ระบุ (ถ้ามี) และ overrides (ถ้ามี)
-    ทำให้ไฟล์ของแต่ละการทดลองระบุเฉพาะค่าที่ต่างจาก default ได้
+    ทำให้ไฟล์ของแต่ละพื้นที่ / งานระบุเฉพาะค่าที่ต่างจาก default ได้
     """
     with open(DEFAULT_CONFIG_PATH, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)

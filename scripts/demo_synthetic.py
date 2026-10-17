@@ -131,7 +131,7 @@ def main() -> None:
     n_err, last_doc = 0, None
     for scan, _, _ in test_day.scans():
         r = pipe.step(scan)
-        write_scan_outputs(out / "realtime", r.document, r.footprints, r.timeseries, points=r.points)
+        write_scan_outputs(out / "realtime", r.document, r.footprints, r.timeseries, points=r.points, outlook=r.outlook, rainmap=r.rainmap)
         n_err += len(r.errors)
         if any(o["onset"]["p_within_30min"] is not None for o in r.document["objects"]):
             last_doc = r.document

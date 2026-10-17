@@ -11,11 +11,12 @@
 อ้างอิงกลุ่ม feature: Mecikalski & Bedka (2006), Sieglaff et al. (2011),
 Zhuge & Zou (2018), Li et al. (2024), Senf & Deneke (2017)
 """
+from __future__ import annotations
+
 import math
 from datetime import datetime, timedelta
 
 import numpy as np
-from scipy import ndimage
 
 from .ingest import Scan
 from .motion import MotionField
@@ -36,12 +37,9 @@ MODEL_FEATURES = [
     # ความหนาเมฆ
     "btd_sw_cold", "d_btd_sw_10", "d_btd_sw_30",
     # บริบท
-    "age_min", "n_scans", "has_parent", "lst_sin", "lst_cos", "is_day", "refl_b03_cold",
-    "land_frac", "elev_mean", "sat_zenith",
+    "age_min", "lst_sin", "lst_cos", "land_frac", "elev_mean", "sat_zenith",
     # track ขั้นก่อนหน้า
     "min_cold_bt_track",
-    # สัณฐานวิทยาและฟิสิกส์แกนเมฆ (Phase 2)
-    "bt_std", "core_contrast", "edge_gradient_k", "solidity", "accel_cold_bt",
 ]
 
 
@@ -160,39 +158,6 @@ def compute_features(track: Track, scan: Scan, motion: MotionField | None, cfg: 
         f[f"d_log_area_{w}"] = _trend(track.history, now, f["log_area"], "log_area", w)
         f[f"d_btd_sw_{w}"] = _trend(track.history, now, f["btd_sw_cold"], "btd_sw_cold", w)
         f[f"d_btd_73_{w}"] = _trend(track.history, now, f["btd_73_cold"], "btd_73_cold", w)
-
-    # ความเร่งของการเย็นตัว accel_cold_bt = d_cold_bt_10 - (d_cold_bt_20 - d_cold_bt_10) = 2*d10 - d20
-    d10 = f.get("d_cold_bt_10", float("nan"))
-    d20 = f.get("d_cold_bt_20", float("nan"))
-    f["accel_cold_bt"] = float(2.0 * d10 - d20) if np.isfinite(d10) and np.isfinite(d20) else float("nan")
-
-    # ---- [Phase 2] สัณฐานวิทยาและสถิติเชิงพื้นที่ (Texture & Morphology) ----
-    f["bt_std"] = float(np.std(ir)) if ir.size else float("nan")
-    f["core_contrast"] = float(obj.mean_bt - obj.cold_mean_bt)
-
-    if rows.size >= 4:
-        r_min, r_max = int(rows.min()), int(rows.max())
-        c_min, c_max = int(cols.min()), int(cols.max())
-        nr = r_max - r_min + 3
-        nc = c_max - c_min + 3
-        bmask = np.zeros((nr, nc), dtype=bool)
-        bmask[rows - r_min + 1, cols - c_min + 1] = True
-        eroded = ndimage.binary_erosion(bmask)
-        edge_sub = bmask & ~eroded
-        er_idx, ec_idx = np.where(edge_sub)
-        edge_rows = er_idx + r_min - 1
-        edge_cols = ec_idx + c_min - 1
-        edge_ir = scan.ir[edge_rows, edge_cols]
-        f["edge_gradient_k"] = float(np.nanmean(edge_ir) - obj.cold_mean_bt) if edge_ir.size else float(obj.mean_bt - obj.cold_mean_bt)
-        try:
-            from skimage.morphology import convex_hull_image
-            chull = convex_hull_image(bmask)
-            f["solidity"] = float(bmask.sum() / max(chull.sum(), 1))
-        except Exception:
-            f["solidity"] = float(bmask.sum() / max((r_max - r_min + 1) * (c_max - c_min + 1), 1))
-    else:
-        f["edge_gradient_k"] = float(obj.mean_bt - obj.cold_mean_bt)
-        f["solidity"] = 1.0
 
     # ---- [ขั้น 4.3] บริบท: เวลาท้องถิ่น, พื้นผิว, มุมมอง ----
     lst_hours = (now.hour + now.minute / 60.0 + obj.lon / 15.0) % 24.0  # local solar time

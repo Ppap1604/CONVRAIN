@@ -46,7 +46,9 @@ class ScanResult:
     document: dict | None = None                 # JSON ต่อ scan (หัวข้อ 9.5)
     footprints: dict = field(default_factory=dict)
     timeseries: pd.DataFrame | None = None       # แถว object-scan ของ scan นี้
-    points: pd.DataFrame | None = None           # เวลาฝนรายจุด (เฉพาะเมื่อตั้ง timing.points_file)
+    points: pd.DataFrame | None = None           # เวลาฝนรายจุดใต้เมฆที่ติดตาม (เฉพาะเมื่อตั้ง timing.points_file)
+    outlook: pd.DataFrame | None = None          # คำเตือน 3 ระดับ + เวลาฝนเริ่ม / หยุดพร้อมความมั่นใจ ทุกจุด
+    rainmap: dict | None = None                  # แผนที่ฝนตอนนี้ (กริด + บริเวณฝนบนพื้น)
     closed_tracks: pd.DataFrame | None = None    # track ที่ปิดใน scan นี้ (ใช้ทำ censor ตอนสร้าง label)
     timings_ms: dict = field(default_factory=dict)
     errors: list = field(default_factory=list)
@@ -108,7 +110,7 @@ class ConvRainPipeline:
 
         # ---------------- [ขั้น 1] detection ----------------
         t = _time.perf_counter()
-        det = detect_objects(scan, cfg, prev_ir=self.prev_ir)
+        det = detect_objects(scan, cfg)
         tm["detect"] = _time.perf_counter() - t
 
         # ---------------- [ขั้น 2] motion field ----------------
@@ -121,7 +123,7 @@ class ConvRainPipeline:
 
         # ---------------- [ขั้น 3] tracking ----------------
         t = _time.perf_counter()
-        upd = self.tracker.update(det, motion, scan.time, dt_min, prev_ir=self.prev_ir)
+        upd = self.tracker.update(det, motion, scan.time, dt_min)
         tm["track"] = _time.perf_counter() - t
 
         # ---------------- [ขั้น 4] features ----------------
@@ -157,7 +159,13 @@ class ConvRainPipeline:
 
         # ---------------- Output + validation ----------------
         doc = scan_document(scan.time, records, self.model_version)
-        errors = validate_output(doc, cfg)
+        # ตรวจพิกัดเทียบโดเมนใน config ∪ ขอบเขตจริงของภาพ (satpy crop ภาพ geostationary ได้กว้างกว่ากรอบ lat/lon)
+        d = cfg.get("domain", {})
+        dom = {"lat_min": min(d.get("lat_min", 90.0), float(np.nanmin(scan.lat))),
+               "lat_max": max(d.get("lat_max", -90.0), float(np.nanmax(scan.lat))),
+               "lon_min": min(d.get("lon_min", 180.0), float(np.nanmin(scan.lon))),
+               "lon_max": max(d.get("lon_max", -180.0), float(np.nanmax(scan.lon)))}
+        errors = validate_output(doc, {**cfg, "domain": dom})
         ts = fdf.copy()
         if len(ts):
             ts = ts.merge(pd.DataFrame(extra_rows), on="object_id", how="left")
@@ -166,6 +174,7 @@ class ConvRainPipeline:
         self.prev_ir, self.prev_time = scan.ir.copy(), scan.time
         tm["total"] = _time.perf_counter() - t0
         return ScanResult(time=scan.time, document=doc, footprints=footprints, timeseries=ts, points=timing.points,
+                          outlook=timing.outlook, rainmap=timing.rainmap,
                           closed_tracks=pd.DataFrame(closed_rows) if closed_rows else None,
                           timings_ms={k: round(v * 1000, 2) for k, v in tm.items()}, errors=errors)
 
@@ -243,9 +252,8 @@ class ConvRainPipeline:
                     footprints[tr.track_id] = ring
                     ref = f"footprints_{stamp}.geojson#{tr.track_id}"
 
-            # เวลาฝนเริ่มที่พื้นใต้แกน: แสดงเฉพาะช่วงที่ยังมีความหมาย (ก่อนถึงจุดสูงสุด หรือ decaying ที่ปะทุซ้ำ)
-            allow_onset = status in ("developing", "raining") or (status == "decaying" and f.get("cooling_rate_kf", 0.0) < -2.0)
-            records.append(object_record(tr, f, px, on if allow_onset else None, intensity,
+            # เวลาฝนเริ่มที่พื้นใต้แกน: แสดงเฉพาะช่วงที่ยังมีความหมาย (ก่อนถึงจุดสูงสุด)
+            records.append(object_record(tr, f, px, on if status in ("developing", "raining") else None, intensity,
                                          ref, cfg["parallax"]["enabled"]))
 
             # แถวเสริมของตาราง object-scan
@@ -255,7 +263,7 @@ class ConvRainPipeline:
                    "eta_median_min": on["eta_median_min"] if on else np.nan,
                    "eta_lo_min": on["eta_lo_min"] if on else np.nan,
                    "eta_hi_min": on["eta_hi_min"] if on else np.nan,
-                   "warning": bool(allow_onset and on is not None and on["p30"] >= warn),
+                   "warning": bool(on is not None and on["p30"] >= warn),
                    "t0": rec["t0"] if rec else pd.NaT, "clock_age_min": rec["age_min"] if rec else np.nan,
                    "peak_q50": rec["peak"]["q50"] if rec else pd.NaT,
                    "stop_q50": rec["stop"]["q50"] if rec else pd.NaT}
@@ -287,7 +295,8 @@ class ConvRainPipeline:
         scans = [(t, {k: v for k, v in img.items() if k != "ci"}) for t, img in self.timing.columns.scans]
         state = {"tracker": self.tracker, "motion_prev": self.motion.prev,
                  "prev_ir": self.prev_ir, "prev_time": self.prev_time,
-                 "timing_book": self.timing.lineages.book, "timing_scans": scans}
+                 "timing_book": self.timing.lineages.book, "timing_scans": scans,
+                 "timing_rainmap": self.timing.rainmap.past, "timing_point_features": self.timing.point_features}
         with open(path, "wb") as f:
             pickle.dump(state, f)
 
@@ -299,3 +308,6 @@ class ConvRainPipeline:
         self.prev_ir, self.prev_time = state["prev_ir"], state["prev_time"]
         self.timing.lineages.book = state.get("timing_book", {})
         self.timing.columns.scans = state.get("timing_scans", [])
+        self.timing.rainmap.past = state.get("timing_rainmap", {})
+        if state.get("timing_point_features") is not None:
+            self.timing.point_features = state["timing_point_features"]

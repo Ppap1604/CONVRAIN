@@ -62,7 +62,8 @@ def main() -> None:
         if missing:
             print(f"{t:%Y-%m-%d %H:%M} ข้าม: ไม่มี band {missing}")
             continue
-        files = [f for b in bands for f in by_band[b]]
+        day = [b for b in cfg["satellite"].get("day_bands", []) if b in by_band]          # ช่องกลางวัน (ถ้ามี)
+        files = [f for b in list(bands) + day for f in by_band[b]]
         scan = read_ahi_hsd(files, cfg)
         save_scan_netcdf(scan, dest)
         print(f"{t:%Y-%m-%d %H:%M} -> {dest.name}  QC={'pass' if scan.quality_ok else 'fail'}")
