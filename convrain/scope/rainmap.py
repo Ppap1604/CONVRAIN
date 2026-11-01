@@ -99,6 +99,10 @@ class MapModel:
         return expit(self.design(np.asarray(X, float)) @ self.b)
 
 
+def make_model(P: dict):
+    return MapModel(P)
+
+
 def ir_fields(bands: dict, lat, lon, prev10, prev20) -> dict:
     nan = lambda: np.full(bands["B13"].shape, np.nan)  # noqa: E731
     B13 = bands["B13"].astype(float)
@@ -169,7 +173,7 @@ class RainMap:
     """ส่งภาพตามลำดับเวลาเข้า update() แล้วอ่านแผนที่ (last) หรือค่าที่จุด (point_features)"""
 
     def __init__(self, params: dict, top_k: float):
-        self.N, self.D = MapModel(params["N"]), MapModel(params["D"])
+        self.N, self.D = make_model(params["N"]), make_model(params["D"])
         self.top_k = float(top_k)
         # ค่าคงที่ปรับเทียบที่อุณหภูมิของเขตอบอุ่น; เขตร้อนโทรโพพอสสูงกว่า ยอดเมฆเย็นกว่าราว 10 K → เลื่อนช่อง IR ก่อนเข้าแผนที่
         self.offset = float(params.get("band_offset_k", 0.0))
@@ -203,7 +207,8 @@ class RainMap:
         F = ir_fields(bands, scan.lat, scan.lon, p10, p20)
         refl = getattr(scan, "refl", {}) or {}
         if "B04" in refl:
-            Fd, okd = day_fields(bands, refl, cos_zenith(t, scan.lat, scan.lon), t)
+            # R39 เป็นค่าสะท้อนที่คำนวณจากการแผ่รังสีจริง → ใช้อุณหภูมิจริง (ไม่เลื่อน)
+            Fd, okd = day_fields(scan.bt, refl, cos_zenith(t, scan.lat, scan.lon), t)
         else:
             Fd, okd = {}, np.zeros(B13.shape, bool)
         F.update(Fd)
@@ -295,6 +300,8 @@ class RainMap:
         E = np.zeros((len(r), len(Ls)), bool)
         E[:, 0] = M["raining"][r, c]
         have = np.zeros(len(r), bool)
+        speed = np.full(len(r), np.nan)
+        pup = {L: np.full(len(r), np.nan) for L in LEADS}
         if M["U"] is not None:
             yy, xx = np.mgrid[-R10:R10 + 1, -R10:R10 + 1]
             dk = yy ** 2 + xx ** 2 <= R10 * R10
@@ -302,10 +309,15 @@ class RainMap:
             cc = np.clip(c[:, None] + xx[dk][None], 0, nx - 1)
             u, v = M["U"][rr, cc].mean(1), M["V"][rr, cc].mean(1)
             have = np.isfinite(u) & np.isfinite(v)
+            dy, dx = grid_spacing_km(M["lat"], M["lon"])
+            speed = np.hypot(u * dx, v * dy)                       # km / นาที ของยอดเมฆเหนือจุด
             for j, L in enumerate(LEADS, 1):
                 ru = np.clip(np.rint(r - v * L).astype(int), 0, ny - 1)
                 cu = np.clip(np.rint(c - u * L).astype(int), 0, nx - 1)
                 E[:, j] = np.where(have, M["raining"][ru, cu], False)
+                pup[L] = np.where(have, M["p"][ru, cu], np.nan)   # ความน่าจะเป็นฝนที่จุดต้นลม L นาที
+        out.update({f"rain_up_{L}": pup[L] for L in LEADS})
+        out["cloud_speed"] = speed
         n_ok = np.where(have, len(Ls), 1)                      # ไม่มีการเคลื่อนที่ (ภาพแรก) → ดูเฉพาะจุดเอง
         arr, dep = np.full(len(r), NO_LEAD), np.full(len(r), NO_LEAD)
         for i in range(len(r)):

@@ -5,7 +5,7 @@
   1. แผนที่ฝนตอนนี้ (โหมดกลางวัน / กลางคืน)                          (rainmap.py)
   2. สายตระกูลเมฆ + นาฬิกา t0 จาก track ของขั้น 3                 (lineage.py)
   3. ค่าคอลัมน์อากาศเหนือจุด                                        (columns.py)
-  4. โมเดลของแต่ละเหตุการณ์ → ควอนไทล์เวลา q10 … q90 + P(ฝนเริ่มภายใน 30 / 60 นาที)   (clock.py, hazard.py)
+  4. นาฬิกา Weibull ของแต่ละเหตุการณ์ → ควอนไทล์เวลา q10 … q90 + P(ฝนเริ่มภายใน 30 / 60 นาที)   (clock.py)
   5. ผลิตภัณฑ์รายจุด: คำเตือน 3 ระดับ + "ฝนจะเริ่ม / หยุดราว HH:MM ความมั่นใจ Y%"     (outlook.py)
 ผล 4 ส่วน:
   rainmap   แผนที่ฝนตอนนี้ (กริดทั้งภาพ + บริเวณฝนบนพื้น) — ไม่ต้องมีจุดหรือเมฆที่ติดตาม
@@ -26,10 +26,9 @@ import numpy as np
 import pandas as pd
 
 from . import params
-from .clock import QCOLS
+from .clock import QCOLS, from_dict
 from .columns import FEATURES, ColumnSampler
 from .geometry import ellipse_d2, local_xy
-from .hazard import from_dict
 from .lineage import LineageBook
 from .outlook import Outlook, PointFeatures
 from .rainmap import RainMap

@@ -100,3 +100,30 @@ class WeibullClock:
         k, lam = self._k_lam(rows)
         s = (rows.t - rows.b + SHIFT).to_numpy(float)
         return 1.0 - np.exp((s / lam) ** k - ((s + minutes) / lam) ** k)
+
+
+def from_dict(P: dict):
+    """สร้างโมเดลเวลาจาก dict ค่าคงที่ (ชนิดดูจาก P["model"])"""
+    kind = P["model"]
+    if kind == "weibull":
+        return WeibullClock.from_dict(P)
+    if kind == "F":
+        return FixedClock(P["offsets"])
+    raise ValueError(f"ไม่รู้จักโมเดล {kind}")
+
+
+class Logit:
+    """L2 logistic (คอลัมน์ 1 อยู่ใน X): Σ logloss + ½‖w‖² / C"""
+
+    def __init__(self, C=1.0, w=None):
+        self.C, self.w = C, (None if w is None else np.asarray(w, dtype=float))
+
+    def fit(self, X, y):
+        from scipy.special import expit
+
+        def f(w):
+            z = X @ w
+            return (np.sum(np.logaddexp(0, z) - y * z) + 0.5 * w @ w / self.C,
+                    X.T @ (expit(z) - y) + w / self.C)
+        self.w = minimize(f, np.zeros(X.shape[1]), jac=True, method="L-BFGS-B").x
+        return self

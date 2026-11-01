@@ -5,7 +5,7 @@
 คุณสมบัติ:
     - อ่าน Username / Password จาก .env (EARTHDATA_USERNAME, EARTHDATA_PASSWORD)
     - รองรับการแปลง Precipitation rate (mm/h) เป็นค่าการสะท้อนเรดาร์สมมูล (Equivalent dBZ)
-      โดยใช้ความสัมพันธ์ Z = 300 * R^1.4
+      โดยใช้ความสัมพันธ์ Z = 200 * R^1.6 (Marshall–Palmer, ค่าที่กรมอุตุนิยมวิทยาใช้)
     - Regrid ลงบนกริดพิกัดดาวเทียม 2 km อัตโนมัติ
 
 วิธีใช้:
@@ -75,10 +75,10 @@ def convert_imerg_hdf5_to_radar_nc(imerg_path: Path, scan_lat: np.ndarray,
         sub_lat = lats[lat_mask]
         sub_precip = precip[np.ix_(lon_mask, lat_mask)].T  # เปลี่ยนเป็น (lat, lon)
 
-        # แปลง mm/h -> dBZ: Z = 300 * R^1.4, dBZ = 10 * log10(Z)
+        # แปลง mm/h -> dBZ: Z = 200 * R^1.6, dBZ = 10 * log10(Z)
         sub_precip = np.where(sub_precip < 0, 0.0, sub_precip)
         with np.errstate(divide="ignore"):
-            z = 300.0 * np.power(np.clip(sub_precip, 0.01, None), 1.4)
+            z = 200.0 * np.power(np.clip(sub_precip, 0.01, None), 1.6)
             dbz = 10.0 * np.log10(np.clip(z, 1.0, None))
             dbz = np.where(sub_precip < 0.1, np.nan, dbz)
 

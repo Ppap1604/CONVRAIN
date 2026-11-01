@@ -48,10 +48,11 @@ def regrid_to_satellite(radar_lat: np.ndarray, radar_lon: np.ndarray, radar_valu
     return vals.reshape(sat_lat.shape)
 
 
-def dbz_to_rainrate(dbz: np.ndarray, a: float = 300.0, b: float = 1.4) -> np.ndarray:
+def dbz_to_rainrate(dbz: np.ndarray, a: float = 200.0, b: float = 1.6) -> np.ndarray:
     """
     Z-R: Z = a·R^b → R = (Z/a)^(1/b)  [mm/h]
-    ค่า default (300, 1.4) คือความสัมพันธ์ convective ที่ใช้ทั่วไป ควรปรับด้วย gauge ของไทย
+    ค่า default (200, 1.6) = Marshall–Palmer ซึ่งกรมอุตุนิยมวิทยาใช้กับเรดาร์ของไทย (ผลิตภัณฑ์ PCAPPI 2 km)
+    และเป็นค่าเดียวกับที่ส่วนปรับเทียบเวลาฝนใช้ (convrain/scope/calibrate.py); เรดาร์ convective ของสหรัฐฯ มักใช้ (300, 1.4)
     """
     z = np.power(10.0, np.asarray(dbz, float) / 10.0)
     return np.power(z / a, 1.0 / b)

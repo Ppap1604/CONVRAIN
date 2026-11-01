@@ -9,9 +9,8 @@ import pytest
 
 from convrain.scope import load_event_models
 from convrain.scope.calibrate import fit_event_models, point_events, radar_mm10, training_rows
-from convrain.scope.clock import QCOLS, WeibullClock
+from convrain.scope.clock import QCOLS, WeibullClock, from_dict
 from convrain.scope.columns import ColumnSampler
-from convrain.scope.hazard import LightHazard, Switch, from_dict
 from convrain.scope.lineage import LineageBook
 
 from conftest import blob, make_scan
@@ -46,23 +45,20 @@ def test_builtin_models_quantiles_and_probabilities():
     assert ((0 <= p30) & (p30 <= p60 + 1e-12) & (p60 <= 1)).all()
 
 
-def test_hazard_probability_matches_quantile():
+def test_weibull_probability_matches_quantile():
     I = rows_like()
-    w1 = WeibullClock.fit(I, "onset")
-    h = LightHazard.for_event(w1, "onset").fit(I, "onset")
-    Q = h.quantiles(I)
-    near = (Q.q50 - I.t) < 170
-    p = np.array([h.prob_within(I[near].iloc[[k]], float(Q.q50[near].iloc[k] - I.t[near].iloc[k]))[0]
-                  for k in range(min(30, int(near.sum())))])
+    w1 = WeibullClock.fit(I, "onset")                    # c = 1: q50 ของนาฬิกา = จุดที่ P(เกิดภายใน) = 0.5
+    Q = w1.quantiles(I)
+    p = np.array([w1.prob_within(I.iloc[[k]], float(Q.q50.iloc[k] - I.t.iloc[k]))[0] for k in range(30)])
     assert np.allclose(p, 0.5, atol=1e-6)
 
 
-def test_dict_roundtrip_and_switch():
+def test_dict_roundtrip():
     I = rows_like()
     w1 = WeibullClock.fit(I, "stop")
-    sw = Switch(LightHazard.for_event(w1, "stop").fit(I, "stop"), w1, 30)
-    sw2 = from_dict(json.loads(json.dumps(sw.to_dict())))
-    np.testing.assert_allclose(sw2.quantiles(I).to_numpy(), sw.quantiles(I).to_numpy())
+    w1.c = 0.9
+    w2 = from_dict(json.loads(json.dumps(w1.to_dict())))
+    np.testing.assert_allclose(w2.quantiles(I).to_numpy(), w1.quantiles(I).to_numpy())
 
 
 # ------------------------------------------------------------------ สายตระกูล / นาฬิกา t0

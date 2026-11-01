@@ -21,7 +21,7 @@ from calibrate_timing import load_rain
 from convrain.scope import load_event_models
 from convrain.scope.calibrate import event_rows, fit_event_models, scores, training_rows
 from convrain.scope.clock import QCOLS, FixedClock
-from convrain.scope.hazard import from_dict
+from convrain.scope.clock import from_dict
 
 EVENTS = ("onset", "peak", "stop")
 

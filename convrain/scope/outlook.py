@@ -47,12 +47,35 @@ SETS = {
                + MAP3 + EXTRA,
     "imminent": ["st_b13", "st_btd", "st_db13", "st_dbtd", "coldest_10", "thickest_10", "cold_frac_10"] + MAP3 + EXTRA,
 }
-STOP_SET = SETS["imminent"]
 FEATURES = sorted({f for v in SETS.values() for f in v})
+# ตัวแปรเพิ่ม (คำนวณทุกครั้ง; ใช้เมื่อค่าคงที่ของภูมิภาคระบุไว้):
+#   ฝนต้นลม       rain_up_L (ความน่าจะเป็นฝนที่จุดต้นลม L นาที), arrival_min, cloud_speed (km / นาที)
+#   สถานะเมฆเหนือจุด  b16max5 (B16 − B13 สูงสุด ~5 km: ≈ 0 = ยอดลึก / หนา), r086max5 (ค่าสะท้อน 0.86 µm กลางวัน: หนาเชิงแสง)
+#   ความชื้น       wv73_grad25 / wv62_grad25 (ความชันเฉลี่ยของช่องไอน้ำ 7.3 / 6.2 µm ใน ~25 km), wv73_anom / wv62_anom
+#                  (ค่าใกล้จุด − ค่าเฉลี่ย ~50 km: ลบ = ชื้นกว่าบริเวณรอบ ๆ)
+#   แกนพายุรอบจุด  core_n25 / core_n50 (จำนวนยอดเย็นเฉพาะที่ < 235 K ใน ~25 / 50 km), core_dist (km), core_temp (K)
+EXTRA_FEATURES = [f"rain_up_{L}" for L in (10, 20, 30, 45, 60)] + [
+    "arrival_min", "cloud_speed", "b16max5", "r086max5", "wv73_grad25", "wv62_grad25", "wv73_anom", "wv62_anom",
+    "core_n25", "core_n50", "core_dist", "core_temp"]
+# ฝนใกล้จุดแบบเส้นหัก: max(0, rain_near − k) — ผลของ "ฝนอยู่ใกล้" ไม่เป็นเส้นตรง (ใกล้มาก ≠ ใกล้นิดหน่อย)
+KNOTS = (0.1, 0.25, 0.5)
+HINGES = [f"{v}_h{k}" for v in ("rain_near", "rain_near25") for k in KNOTS]
+DETAIL = EXTRA_FEATURES + HINGES + ["daylit"]
+
+
+def add_hinges(D) -> None:
+    for v in ("rain_near", "rain_near25"):
+        x = np.asarray(D[v], float)
+        for k in KNOTS:
+            D[f"{v}_h{k}"] = np.maximum(x - k, 0.0)
 
 
 def onset_set(b: float) -> list:
-    return SETS["imminent"] if b <= 30 else (SETS["warning"] if b <= 60 else SETS["watch"])
+    base = SETS["imminent"] if b <= 30 else (SETS["warning"] if b <= 60 else SETS["watch"])
+    return list(dict.fromkeys(base + DETAIL))
+
+
+STOP_SET = list(dict.fromkeys(SETS["imminent"] + DETAIL))
 
 
 def cos_sun_simple(lat, lon, t: pd.Timestamp) -> np.ndarray:
@@ -167,9 +190,54 @@ class PointFeatures:
             out["rain_now"] = out["rain_near"] = nan
             out["daylit"] = np.zeros(len(r), bool)
         out["rain_near25"] = maximum_filter(rain_p, 2 * R25 + 1)[r, c] if rain_p is not None else nan
+        out.update(self._extra(scan, g, B13, rain, r, c))
+        add_hinges(out)
         self.prev[t] = {k: F[k] for k in ("b", "btd", "cold_frac_25", "cold_frac_50")}
         self.prev = {k: v for k, v in self.prev.items() if (t - k).total_seconds() / 60 <= 31}
         return pd.DataFrame(out)
+
+
+    def _extra(self, scan, g, B13, rain, r, c) -> dict:
+        from scipy.ndimage import distance_transform_edt
+        from .rainmap import COS_MIN, cos_zenith, grid_spacing_km
+        n = len(r)
+        out = {}
+        for k in [f"rain_up_{L}" for L in (10, 20, 30, 45, 60)] + ["arrival_min", "cloud_speed"]:
+            out[k] = rain[k].to_numpy(float) if rain is not None and k in rain else np.full(n, np.nan)
+        b = np.where(np.isfinite(B13), B13, 300.0)
+        d16 = g("B16") - B13
+        out["b16max5"] = maximum_filter(np.where(np.isfinite(d16), d16, -50.0), 5)[r, c]
+        refl = getattr(scan, "refl", {}) or {}
+        if "B04" in refl:
+            cz = cos_zenith(scan.time, self.lat, self.lon)
+            rmax = maximum_filter(np.nan_to_num(refl["B04"], nan=0.0), 5)[r, c]
+            out["r086max5"] = np.where(cz >= COS_MIN, rmax / np.maximum(cz, 1e-3), np.nan)
+        else:
+            out["r086max5"] = np.full(n, np.nan)
+        for band, name in (("B10", "wv73"), ("B08", "wv62")):
+            w = g(band)
+            if not np.isfinite(w).any():
+                out[f"{name}_grad25"] = out[f"{name}_anom"] = np.full(n, np.nan)
+                continue
+            w = np.where(np.isfinite(w), w, np.nanmean(w))
+            out[f"{name}_grad25"] = uniform_filter(np.hypot(*np.gradient(w)), 2 * R25 + 1)[r, c]
+            out[f"{name}_anom"] = (uniform_filter(w, 5) - uniform_filter(w, 2 * R50 + 1))[r, c]
+        from scipy.ndimage import center_of_mass, label
+        core = (b == minimum_filter(b, 11)) & (b < 235.0)
+        lab, nc = label(core, np.ones((3, 3)))                     # ยอดเย็นที่ติดกัน = แกนเดียว (นับที่จุดศูนย์กลาง)
+        pts = np.zeros(b.shape, np.float32)
+        if nc:
+            cm = np.rint(np.array(center_of_mass(core, lab, range(1, nc + 1)))).astype(int)
+            np.add.at(pts, (cm[:, 0], cm[:, 1]), 1.0)
+        for R, nm in ((R25, "core_n25"), (R50, "core_n50")):
+            out[nm] = np.rint(uniform_filter(pts, 2 * R + 1, mode="constant")[r, c] * (2 * R + 1) ** 2)
+        if core.any():
+            dy, dx = grid_spacing_km(scan.lat, scan.lon)
+            d, (ii, jj) = distance_transform_edt(~core, sampling=(dy, dx), return_indices=True)
+            out["core_dist"], out["core_temp"] = np.minimum(d[r, c], 200.0), b[ii[r, c], jj[r, c]]
+        else:
+            out["core_dist"], out["core_temp"] = np.full(n, 200.0), np.full(n, np.nan)
+        return out
 
 
 # ====================================================================== โมเดล

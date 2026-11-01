@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 
 from .calibrate import ten_minute_series
-from .hazard import _Logit
+from .clock import Logit
 from .outlook import (DAY_COS, H_ON, H_ST, LEVELS, STOP_SET, PointFeatures, curve_at, onset_set, window_statement)
 from .rainmap import RainMap
 
@@ -106,12 +106,14 @@ def label_rows(rows: pd.DataFrame, series: dict, wet: float) -> pd.DataFrame:
 
 # ====================================================================== 3. ฟิต
 def fit_lr(D: pd.DataFrame, cols: list, y: np.ndarray) -> dict:
+    # ตัวแปรที่ไม่มีค่าเลยหรือคงที่ในข้อมูลฝึก (เช่น ช่องกลางวันในพื้นที่ที่ไม่มีภาพกลางวัน) ไม่ได้ใช้
+    cols = [c for c in cols if c in D and np.isfinite(D[c].to_numpy(float)).any() and np.nanstd(D[c].to_numpy(float)) > 1e-9]
     X = D[cols].to_numpy(float)
     med = np.nanmedian(X, 0)
     med = np.where(np.isfinite(med), med, 0.0)
     Xf = np.where(np.isfinite(X), X, med)
     mu, sd = Xf.mean(0), Xf.std(0) + 1e-9
-    w = _Logit(1.0).fit(np.hstack([np.ones((len(X), 1)), (Xf - mu) / sd]), y.astype(float)).w
+    w = Logit(1.0).fit(np.hstack([np.ones((len(X), 1)), (Xf - mu) / sd]), y.astype(float)).w
     return {"cols": list(cols), "med": med.tolist(), "mu": mu.tolist(), "sd": sd.tolist(), "w": w.tolist()}
 
 

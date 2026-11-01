@@ -5,7 +5,7 @@
   1. replay ด้วย ScopeTiming(collect_rows=True) + timing.points_file = จุดที่มีข้อมูลฝน → แถวรายจุด (rows_log)
   2. ฝนที่จุดเป็นช่วง 10 นาที (มม. / 10 นาที, ป้ายเวลา = กลางช่วง) → เหตุการณ์ด้วย point_events
   3. training_rows: ติดเวลาเหตุการณ์ให้แต่ละแถว (หน้าต่าง [t0 − 60, ออกคำทำนายครั้งสุดท้าย + 90 นาที])
-  4. fit_event_models: ฟิต นาฬิกา Weibull + hazard รายช่วง ของแต่ละเหตุการณ์ → dict แบบเดียวกับ params.EVENT_MODELS (บันทึกเป็น JSON
+  4. fit_event_models: ฟิตนาฬิกา Weibull ของแต่ละเหตุการณ์ → dict แบบเดียวกับ constants/timing_<ภูมิภาค>.json (บันทึกเป็น JSON
      แล้วตั้ง timing.params_file)
 
 นิยามเหตุการณ์ที่จุด (เกณฑ์ฝน 0.5 มม. / 10 นาที ≈ 3 มม./ชม. ≈ 30 dBZ):
@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 
 from .clock import QCOLS, WeibullClock, widen
-from .hazard import LightHazard, Switch
 from .timing import EVENTS, to_min
 
 RAIN_MIN = 0.5
@@ -106,8 +105,8 @@ def event_rows(rows: pd.DataFrame, x: str) -> pd.DataFrame:
     return rows[rows[x].notna() & (rows.t < rows[x])].reset_index(drop=True)
 
 
-def fit_event_models(rows: pd.DataFrame, switch_minutes: float = 30.0) -> dict:
-    """ฟิตโมเดลของทั้ง 3 เหตุการณ์ (รูปเดียวกับ params.EVENT_MODELS) → dict สำหรับ timing.params_file"""
+def fit_event_models(rows: pd.DataFrame) -> dict:
+    """ฟิตนาฬิกา Weibull ของทั้ง 3 เหตุการณ์ (รูปเดียวกับ constants/timing_<ภูมิภาค>.json) → dict สำหรับ timing.params_file"""
     out = {}
     for x in EVENTS:
         I = event_rows(rows, x)
@@ -115,8 +114,7 @@ def fit_event_models(rows: pd.DataFrame, switch_minutes: float = 30.0) -> dict:
             raise ValueError(f"{x}: แถวที่ใช้ได้มีแค่ {len(I)} (ต้อง ≥ 50) — เพิ่มวัน / จุด")
         clock = WeibullClock.fit(I, x)
         clock.c = choose_c(clock.quantiles(I), I[x].to_numpy(float))
-        haz = LightHazard.for_event(clock, x).fit(I, x)
-        out[x] = Switch(haz, clock, switch_minutes).to_dict() if x == "stop" else haz.to_dict()
+        out[x] = clock.to_dict()
     return out
 
 

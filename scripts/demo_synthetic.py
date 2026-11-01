@@ -33,7 +33,7 @@ from convrain.scope import load_event_models  # noqa: E402
 from convrain.scope.calibrate import event_rows, fit_event_models, radar_mm10, scores, ten_minute_series, \
     training_rows  # noqa: E402
 from convrain.scope.clock import FixedClock  # noqa: E402
-from convrain.scope.hazard import from_dict  # noqa: E402
+from convrain.scope.clock import from_dict  # noqa: E402
 from convrain.synthetic import SyntheticDay  # noqa: E402
 
 STEP_PX = 6          # เกจเสมือนทุก 6 พิกเซล

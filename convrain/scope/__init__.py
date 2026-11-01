@@ -4,8 +4,7 @@
     timing.py     ScopeTiming: ตัวที่ pipeline เรียกทุก scan
     lineage.py    สายตระกูลเมฆ + นาฬิกา t0 จาก track ของขั้น 3
     columns.py    ค่าคอลัมน์อากาศเหนือจุดบนพื้น
-    clock.py      นาฬิกา: FixedClock, WeibullClock
-    hazard.py     LightHazard (hazard รายช่วง 10 นาที) + ตัวสลับ + from_dict
+    clock.py      นาฬิกา: WeibullClock (โมเดลเวลาฝน), FixedClock (ตัวเทียบ), from_dict
     calibrate.py  ปรับเทียบค่าคงที่ใหม่จากข้อมูลฝนที่จุด (เรดาร์ / มาตรวัดฝน) — ใช้ offline เท่านั้น
     params.py     ค่าคงที่ที่ติดมากับโค้ด
     geometry.py   parallax, ระยะ, วงรีแกน, พิกเซลเหนือจุด
