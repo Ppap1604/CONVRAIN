@@ -29,7 +29,13 @@ from pathlib import Path
 
 import requests
 
-DEFAULT_BANDS = ["B08", "B10", "B11", "B13", "B14", "B15", "B16"]
+# อินฟราเรด (ใช้ตลอด 24 ชม.) + ช่องแสง (กลางวัน: แผนที่ฝนโหมดกลางวัน, ตัวแปรสี / การดูดกลืน 2.3 µm)
+DEFAULT_BANDS = ["B07", "B08", "B10", "B11", "B12", "B13", "B14", "B15", "B16", "B01", "B02", "B03", "B04", "B05", "B06"]
+RES = {"B01": "R10", "B02": "R10", "B03": "R05", "B04": "R10"}       # ความละเอียดในชื่อไฟล์ HSD (ช่องอื่น R20 = 2 km)
+
+
+def hsd_name(stamp: str, band: str, seg: str) -> str:
+    return f"HS_H09_{stamp}_{band}_FLDK_{RES.get(band, 'R20')}_{seg}10.DAT.bz2"
 # Segments ที่ครอบคลุมไทย: S04 (เหนือ), S05 (กลาง/อีสาน/กทม.), S06 (ใต้/อ่าวไทย)
 DEFAULT_SEGMENTS = ["S04", "S05", "S06"]
 AWS_S3_BASE = "https://noaa-himawari9.s3.amazonaws.com/AHI-L1b-FLDK"
@@ -90,7 +96,7 @@ def download_scan_s3(t: datetime, bands: list[str], segments: list[str],
     targets = []
     for b in bands:
         for s in segments:
-            fname = f"HS_H09_{stamp}_{b}_FLDK_R20_{s}10.DAT.bz2"
+            fname = hsd_name(stamp, b, s)
             url = f"{prefix}/{fname}"
             dest = scan_out_dir / fname
             targets.append((fname, url, dest))
@@ -230,7 +236,7 @@ def main() -> None:
                     scan_out_dir = out_dir / f"{t:%Y%m%d}"
                     for b in bands:
                         for s in segments:
-                            fname = f"HS_H09_{stamp}_{b}_FLDK_R20_{s}10.DAT.bz2"
+                            fname = hsd_name(stamp, b, s)
                             p = j_down.download_file(remote_dir, fname, scan_out_dir)
                             if p:
                                 files.append(p)
