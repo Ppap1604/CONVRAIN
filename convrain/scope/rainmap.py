@@ -99,8 +99,65 @@ class MapModel:
         return expit(self.design(np.asarray(X, float)) @ self.b)
 
 
+class AdditiveModel:
+    """โมเดลบวกของแผนที่หนึ่งโหมด (kind = "additive"): log-odds = baseline + Σ ตาราง 1 มิติ (เส้นโค้งของตัวแปรเดียว)
+    + Σ ตาราง 2 มิติ (คู่ตัวแปร) — ทุกค่าอ่านได้จากตาราง; ช่องของตัวแปร: x ≤ cut0, (cut0, cut1], …, > cut_last, และช่องค่าหาย"""
+
+    def __init__(self, P: dict):
+        self.cols = list(P["cols"])
+        self.thr = float(P["thr"])
+        self.baseline = float(P["baseline"])
+        self.groups = [(list(g["vars"]), [np.asarray(c, float) for c in g["cuts"]], np.asarray(g["table"], float))
+                       for g in P["groups"]]
+
+    def raw(self, X):
+        X = np.asarray(X, float)
+        out = np.full(len(X), self.baseline)
+        for vs, cuts, tab in self.groups:
+            idx = []
+            for j, c in zip(vs, cuts):
+                x = X[:, j]
+                idx.append(np.where(np.isnan(x), len(c) + 1, np.searchsorted(c, x, side="left")))
+            out += tab[tuple(idx)]
+        return out
+
+    def prob(self, X):
+        return expit(self.raw(X))
+
+
 def make_model(P: dict):
-    return MapModel(P)
+    return AdditiveModel(P) if P.get("kind") == "additive" else MapModel(P)
+
+
+# ตัวแปรช่องเพิ่ม 9 ตัว: สีของแสงที่เมฆกระเจิง / การดูดกลืนของน้ำแข็งและอนุภาคใหญ่ที่ 2.3 µm (กลางวัน) และอุณหภูมิ IR เทียบ B16 / B12
+N9 = ("B01-B06", "B03/B06", "B01-B03", "B01-B02", "B02-B06", "B13/B16", "B11/B16", "B15/B16", "B07/B12")
+
+
+def _mean3(a):
+    with np.errstate(all="ignore"):
+        fin = np.isfinite(a)
+        w = uniform_filter(fin.astype(float), 3)
+        m = uniform_filter(np.where(fin, a, 0.0), 3) / np.maximum(w, 1e-6)
+        return np.where(w > 0, m, np.nan)
+
+
+def n9_fields(bt: dict, refl: dict, cz: np.ndarray) -> dict:
+    """bt = อุณหภูมิสว่างจริง (K), refl = ค่าสะท้อน 0–1 (ยังไม่หาร cos θ0); ช่องแสงใช้เฉพาะ cos θ0 ≥ COS_MIN; เฉลี่ย 3 × 3 ก่อนรวม"""
+    shape = bt["B13"].shape
+    nan = np.full(shape, np.nan)
+    A = {}
+    with np.errstate(all="ignore"):
+        for b in ("B01", "B02", "B03", "B06"):
+            A[b] = np.where(cz >= COS_MIN, refl[b] / np.maximum(cz, 0.05), np.nan) if b in refl else nan
+        for b in ("B07", "B11", "B12", "B13", "B15", "B16"):
+            A[b] = bt[b].astype(float) if b in bt else nan
+        M = {b: _mean3(a) for b, a in A.items()}
+        F = {}
+        for v in N9:
+            op = "-" if "-" in v else "/"
+            a, b = v.split(op)
+            F[f"n9_{v}"] = M[a] - M[b] if op == "-" else np.where(np.abs(M[b]) > 1e-3, M[a] / M[b], np.nan)
+    return F
 
 
 def ir_fields(bands: dict, lat, lon, prev10, prev20) -> dict:
@@ -174,6 +231,7 @@ class RainMap:
 
     def __init__(self, params: dict, top_k: float):
         self.N, self.D = make_model(params["N"]), make_model(params["D"])
+        self.needs_n9 = any(c.startswith("n9_") for c in self.N.cols + self.D.cols)
         self.top_k = float(top_k)
         # ค่าคงที่ปรับเทียบที่อุณหภูมิของเขตอบอุ่น; เขตร้อนโทรโพพอสสูงกว่า ยอดเมฆเย็นกว่าราว 10 K → เลื่อนช่อง IR ก่อนเข้าแผนที่
         self.offset = float(params.get("band_offset_k", 0.0))
@@ -206,12 +264,15 @@ class RainMap:
         p10, p20 = self._lag(t, 10), self._lag(t, 20)
         F = ir_fields(bands, scan.lat, scan.lon, p10, p20)
         refl = getattr(scan, "refl", {}) or {}
+        cz = cos_zenith(t, scan.lat, scan.lon) if (refl or self.needs_n9) else None
         if "B04" in refl:
             # R39 เป็นค่าสะท้อนที่คำนวณจากการแผ่รังสีจริง → ใช้อุณหภูมิจริง (ไม่เลื่อน)
-            Fd, okd = day_fields(scan.bt, refl, cos_zenith(t, scan.lat, scan.lon), t)
+            Fd, okd = day_fields(scan.bt, refl, cz, t)
         else:
             Fd, okd = {}, np.zeros(B13.shape, bool)
         F.update(Fd)
+        if self.needs_n9:                                    # อัตราส่วน / ผลต่างของช่อง ใช้ค่าจริง (ไม่เลื่อน)
+            F.update(n9_fields(scan.bt, refl, cz))
         full = np.isfinite(B13)
         p = np.zeros(B13.shape)
         e = np.zeros(B13.shape, bool)

@@ -58,6 +58,10 @@ EXTRA_FEATURES = [f"rain_up_{L}" for L in (10, 20, 30, 45, 60)] + [
     "arrival_min", "cloud_speed", "b16max5", "r086max5", "wv73_grad25", "wv62_grad25", "wv73_anom", "wv62_anom",
     "core_n25", "core_n50", "core_dist", "core_temp"]
 # ฝนใกล้จุดแบบเส้นหัก: max(0, rain_near − k) — ผลของ "ฝนอยู่ใกล้" ไม่เป็นเส้นตรง (ใกล้มาก ≠ ใกล้นิดหน่อย)
+OBJ_K = 248.0                                                     # ระดับรอยเมฆพาความร้อน (หน่วยหลังเลื่อนอุณหภูมิของภูมิภาค)
+OBJECT_FEATURES = ["obj_p", "obj_wet"]
+FORM_LEADS = (0, 20, 40)
+FORMATION_FEATURES = [f"form_{p}{k}_{L}" for L in FORM_LEADS for k in ("min", "btd", "b16", "r086") for p in ("", "d")]
 KNOTS = (0.1, 0.25, 0.5)
 HINGES = [f"{v}_h{k}" for v in ("rain_near", "rain_near25") for k in KNOTS]
 DETAIL = EXTRA_FEATURES + HINGES + ["daylit"]
@@ -71,8 +75,9 @@ def add_hinges(D) -> None:
 
 
 def onset_set(b: float) -> list:
+    """ฝนเริ่ม: ตัวแปรของระยะนั้น + ตัวแปรเพิ่ม + ช่วงก่อตัวของเมฆที่กำลังจะมาถึง (ฝนหยุดไม่ใช้ช่วงก่อตัว)"""
     base = SETS["imminent"] if b <= 30 else (SETS["warning"] if b <= 60 else SETS["watch"])
-    return list(dict.fromkeys(base + DETAIL))
+    return list(dict.fromkeys(base + DETAIL + FORMATION_FEATURES))
 
 
 STOP_SET = list(dict.fromkeys(SETS["imminent"] + DETAIL))
@@ -141,8 +146,10 @@ class PointFeatures:
             F[f"thickest_{n}"] = minimum_filter(btd, 2 * R + 1)
         return F
 
-    def update(self, scan, rain: pd.DataFrame | None = None, rain_p: np.ndarray | None = None) -> pd.DataFrame:
-        """rain = ค่าที่จุดจาก RainMap.point_features; rain_p = แผนที่ความน่าจะเป็นทั้งภาพ (สำหรับ rain_near25)"""
+    def update(self, scan, rain: pd.DataFrame | None = None, rain_p: np.ndarray | None = None,
+               rain_e: np.ndarray | None = None, flow=None) -> pd.DataFrame:
+        """rain = ค่าที่จุดจาก RainMap.point_features; rain_p = แผนที่ความน่าจะเป็นทั้งภาพ (สำหรับ rain_near25);
+        rain_e = พิกเซลที่แผนที่บอกว่าเป็นฝน (สำหรับก้อนเมฆเหนือจุด)"""
         self._pixels(scan)
         r, c = self.r, self.c
         t = scan.time
@@ -191,11 +198,70 @@ class PointFeatures:
             out["daylit"] = np.zeros(len(r), bool)
         out["rain_near25"] = maximum_filter(rain_p, 2 * R25 + 1)[r, c] if rain_p is not None else nan
         out.update(self._extra(scan, g, B13, rain, r, c))
+        out.update(self._cloud_object(F["b"], rain_p, rain_e, r, c))
+        G = self._formation_fields(scan, g, F)
+        out.update(self._formation(G, P30, flow, r, c))
         add_hinges(out)
         self.prev[t] = {k: F[k] for k in ("b", "btd", "cold_frac_25", "cold_frac_50")}
+        self.prev[t].update(G)
         self.prev = {k: v for k, v in self.prev.items() if (t - k).total_seconds() / 60 <= 31}
         return pd.DataFrame(out)
 
+
+    @staticmethod
+    def _formation_fields(scan, g, F) -> dict:
+        """สถานะของเมฆก้อนเล็ก (กล่อง 5 × 5 ≈ 10 km): ยอดเย็นสุด, หนาสุด (B13 − B15 ต่ำสุด), ลึกสุด (B16 − B13 สูงสุด),
+        สว่างสุดที่ 0.86 µm ÷ cos θ0 (กลางวัน; กลางคืน = 0)"""
+        from .rainmap import COS_MIN, cos_zenith
+        d16 = g("B16") - g("B13")
+        refl = getattr(scan, "refl", {}) or {}
+        if "B04" in refl:
+            cz = cos_zenith(scan.time, scan.lat, scan.lon)
+            r086 = np.where(cz >= COS_MIN, np.nan_to_num(refl["B04"], nan=0.0) / np.maximum(cz, 1e-3), 0.0)
+        else:
+            r086 = np.zeros(F["b"].shape)
+        return {"f_min": minimum_filter(F["b"], 5), "f_btd": minimum_filter(F["btd"], 5),
+                "f_b16": maximum_filter(np.where(np.isfinite(d16), d16, -50.0), 5), "f_r086": maximum_filter(r086, 5)}
+
+    @staticmethod
+    def _formation(G, P30, flow, r, c) -> dict:
+        """เมฆที่จะมาอยู่เหนือจุดใน L = 0, 20, 40 นาที (ย้อนตามการเคลื่อนที่ของยอดเมฆ): สถานะตอนนี้ และการเปลี่ยนใน 30 นาทีที่ผ่านมา
+        ตามตัวเมฆเอง (ค่าตอนนี้ − ค่าของภาพ 30 นาทีก่อน ณ ตำแหน่งต้นลมไปอีก 30 นาที) — เมฆกำลังหนาขึ้น / ลึกขึ้น / เย็นลงก่อนฝนตก"""
+        ny, nx = G["f_min"].shape
+        n = len(r)
+        if flow is not None and flow[0] is not None:
+            U, V = (uniform_filter(np.nan_to_num(a), 5)[r, c] for a in flow)          # พิกเซลต่อนาที
+        else:
+            U = V = np.zeros(n)
+        out = {}
+        for L in FORM_LEADS:
+            ru = np.clip(np.rint(r - V * L), 0, ny - 1).astype(int)
+            cu = np.clip(np.rint(c - U * L), 0, nx - 1).astype(int)
+            r0 = np.clip(np.rint(ru - V * 30), 0, ny - 1).astype(int)
+            c0 = np.clip(np.rint(cu - U * 30), 0, nx - 1).astype(int)
+            for k in ("min", "btd", "b16", "r086"):
+                now = G[f"f_{k}"][ru, cu]
+                out[f"form_{k}_{L}"] = now
+                out[f"form_d{k}_{L}"] = now - P30[f"f_{k}"][r0, c0] if (P30 is not None and f"f_{k}" in P30) else np.full(n, np.nan)
+        return out
+
+    @staticmethod
+    def _cloud_object(b, rain_p, rain_e, r, c) -> dict:
+        """ก้อนเมฆเย็นที่ติดกัน (B13 < 248 K หลังเลื่อนอุณหภูมิของภูมิภาค = ระดับรอยเมฆพาความร้อน) ที่คลุมพิกเซลเหนือจุด:
+        obj_p = ความน่าจะเป็นฝนสูงสุดในก้อน ("เมฆก้อนนี้ฝนตกไหม"), obj_wet = สัดส่วนพิกเซลของก้อนที่แผนที่บอกว่าเป็นฝน; 0 = ไม่อยู่ใต้ก้อน"""
+        from scipy.ndimage import label, maximum as nd_max, mean as nd_mean
+        n = len(r)
+        if rain_p is None:
+            return {"obj_p": np.full(n, np.nan), "obj_wet": np.full(n, np.nan)}
+        lab, k = label(b < OBJ_K, np.ones((3, 3)))
+        out = {"obj_p": np.zeros(n), "obj_wet": np.zeros(n)}
+        if k:
+            idx = np.arange(1, k + 1)
+            pmax = np.r_[0.0, np.asarray(nd_max(rain_p, lab, idx), float)]
+            wet = np.r_[0.0, np.asarray(nd_mean((rain_e if rain_e is not None else rain_p >= 0.5).astype(float), lab, idx), float)]
+            li = lab[r, c]
+            out["obj_p"], out["obj_wet"] = pmax[li], wet[li]
+        return out
 
     def _extra(self, scan, g, B13, rain, r, c) -> dict:
         from scipy.ndimage import distance_transform_edt

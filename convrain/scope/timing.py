@@ -156,7 +156,8 @@ class ScopeTiming:
         return TimingResult(objects=objects, points=pts, outlook=outlook, rainmap=rmap)
 
     def _outlook(self, scan, rain_pts: pd.DataFrame) -> pd.DataFrame:
-        D = self.point_features.update(scan, rain_pts, self.rainmap.last["p"])
+        M = self.rainmap.last
+        D = self.point_features.update(scan, rain_pts, M["p"], M["raining"], (M["U"], M["V"]))
         raining = self.rainmap.last["raining"][self.point_features.r, self.point_features.c]
         O = self.outlook.predict(D, raining, pd.Timestamp(scan.time))
         P = self.points

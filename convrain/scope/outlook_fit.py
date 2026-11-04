@@ -39,7 +39,7 @@ def collect_rows(scans, points: pd.DataFrame, rain_constants: dict, top_k: float
         last = s.time
         rm.update(s)
         rain = rm.point_features(points.lat.to_numpy(float), points.lon.to_numpy(float))
-        D = pf.update(s, rain, rm.last["p"])
+        D = pf.update(s, rain, rm.last["p"], rm.last["raining"], (rm.last["U"], rm.last["V"]))
         r, c = pf.r, pf.c
         D["raining"] = rm.last["raining"][r, c]
         D.insert(0, "time", pd.Timestamp(s.time))
